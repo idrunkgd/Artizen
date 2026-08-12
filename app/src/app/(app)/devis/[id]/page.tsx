@@ -8,6 +8,7 @@ import { QuoteHeaderForm } from "../quote-header-form";
 import { LinesEditor } from "./lines-editor";
 import { MilestonesEditor } from "./milestones-editor";
 import { StatusActions } from "./status-actions";
+import { RegieBilling } from "./regie-billing";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,24 @@ export default async function Page({ params }: { params: { id: string } }) {
   ]);
   if (!quote) notFound();
   const st = STATUS_MAP[quote.status];
+
+  const isRegie = quote.billingType === "REGIE";
+  // Taux horaire par défaut = 1re ligne du devis exprimée en heures.
+  const hourLine = quote.lines.find((l) => l.unit === "h");
+  const defaultRate = hourLine ? Number(hourLine.unitPrice) : 0;
+  // Heures prestées non encore facturées (régie + chantier déjà créé).
+  let unbilledHours = 0;
+  let entryCount = 0;
+  if (isRegie && quote.projectId) {
+    const agg = await prisma.timesheetEntry.aggregate({
+      where: { organizationId, projectId: quote.projectId, invoiceId: null },
+      _sum: { hours: true },
+      _count: true
+    });
+    unbilledHours = Number(agg._sum.hours ?? 0);
+    entryCount = agg._count;
+  }
+
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <Link href="/devis" className="text-sm text-ink-300 inline-flex items-center gap-1 mb-3"><ArrowLeft className="w-4 h-4" /> Retour aux devis</Link>
@@ -59,8 +78,18 @@ export default async function Page({ params }: { params: { id: string } }) {
             {quote.reference} · {quote.customer.name}{quote.project && ` · ${quote.project.name}`}
           </p>
         </div>
-        <span className={st.cls}>{st.label}</span>
+        <div className="flex flex-col items-end gap-1">
+          <span className={st.cls}>{st.label}</span>
+          <span className={isRegie ? "badge-gold" : "badge-ink"}>{isRegie ? "Régie" : "Forfait"}</span>
+        </div>
       </div>
+
+      {isRegie && (
+        <div className="mb-4 rounded-xl border-2 border-gold/40 bg-gold/10 p-3 text-sm text-ink">
+          <strong>Devis en régie</strong> — les montants ci-dessous sont une <strong>estimation</strong>.
+          La facturation se fait au temps réellement presté (heures du Timesheet du chantier).
+        </div>
+      )}
 
       {/* Actions principales */}
       <div className="flex flex-wrap gap-2 mb-5">
@@ -90,15 +119,32 @@ export default async function Page({ params }: { params: { id: string } }) {
 
       {/* Lignes */}
       <section className="mb-5">
-        <h2 className="font-bold text-lg mb-3">Lignes du devis ({quote.lines.length})</h2>
+        <h2 className="font-bold text-lg mb-3">
+          {isRegie
+            ? `Prestations & taux — estimation (${quote.lines.length})`
+            : `Lignes du devis (${quote.lines.length})`}
+        </h2>
         <LinesEditor quoteId={quote.id} lines={quote.lines as any} />
       </section>
 
-      {/* Tranches */}
-      <section className="mb-5">
-        <h2 className="font-bold text-lg mb-3">Tranches de facturation ({quote.milestones.length})</h2>
-        <MilestonesEditor quoteId={quote.id} milestones={quote.milestones as any} totalHt={Number(quote.totalHt)} />
-      </section>
+      {/* Facturation : tranches (forfait) OU heures prestées (régie) */}
+      {isRegie ? (
+        <section className="mb-5">
+          <h2 className="font-bold text-lg mb-3">Facturer les heures prestées</h2>
+          <RegieBilling
+            quoteId={quote.id}
+            hasProject={!!quote.projectId}
+            unbilledHours={unbilledHours}
+            entryCount={entryCount}
+            defaultRate={defaultRate}
+          />
+        </section>
+      ) : (
+        <section className="mb-5">
+          <h2 className="font-bold text-lg mb-3">Tranches de facturation ({quote.milestones.length})</h2>
+          <MilestonesEditor quoteId={quote.id} milestones={quote.milestones as any} totalHt={Number(quote.totalHt)} />
+        </section>
+      )}
 
       {/* Édition header */}
       <section>

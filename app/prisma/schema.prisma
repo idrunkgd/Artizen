@@ -292,6 +292,15 @@ enum QuoteStatus {
   CANCELLED
 }
 
+/// Mode de facturation d'un devis.
+///   FORFAIT : prix ferme, on facture le montant convenu (via tranches).
+///   REGIE   : prix estimatif, on facture le temps réellement presté
+///             (heures/jours du Timesheet du chantier × taux du devis).
+enum BillingType {
+  FORFAIT
+  REGIE
+}
+
 model Quote {
   id             String       @id @default(cuid())
   organizationId String
@@ -310,6 +319,8 @@ model Quote {
   title          String
   description    String?
   status         QuoteStatus  @default(DRAFT)
+  /// FORFAIT (prix ferme) ou REGIE (facturation au temps presté).
+  billingType    BillingType  @default(FORFAIT)
   /// 21 = standard belge, 6 = travaux logement >10 ans, 0 = exonéré
   vatRate        Decimal      @default(21) @db.Decimal(5, 2)
   totalHt        Decimal      @default(0) @db.Decimal(12, 2)
@@ -395,6 +406,8 @@ model Invoice {
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// Tranches devis couvertes par cette facture (peut être vide si facture libre).
   coveredMilestones QuoteMilestone[] @relation("InvoiceFromMilestones")
+  /// Heures de régie (Timesheet) couvertes par cette facture.
+  timesheetEntries  TimesheetEntry[] @relation("InvoiceFromTimesheet")
   reference      String        // ex. FAC-2026-001 — séquentiel obligatoire en Belgique
   customerId     String
   customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -450,12 +463,17 @@ model TimesheetEntry {
   date           DateTime     @db.Date
   hours          Decimal      @db.Decimal(4, 2)  // ex. 7.5
   description    String?      // « pose carrelage », « démolition cloison »
+  /// Facture régie ayant couvert ces heures (null = pas encore facturé).
+  /// Empêche de facturer deux fois les mêmes heures.
+  invoiceId      String?
+  invoice        Invoice?     @relation("InvoiceFromTimesheet", fields: [invoiceId], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   @@index([organizationId, date])
   @@index([projectId, date])
   @@index([userId, date])
+  @@index([invoiceId])
 }
 
 // ============================================================

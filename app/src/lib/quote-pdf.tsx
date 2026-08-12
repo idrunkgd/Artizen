@@ -48,6 +48,7 @@ export interface QuotePdfData {
   title: string;
   description: string | null;
   status: string;
+  billingType: string;
   vatRate: number;
   totalHt: number;
   totalTvac: number;
@@ -64,6 +65,7 @@ export interface QuotePdfData {
 
 export function QuotePdf({ data, isInvoice = false }: { data: QuotePdfData; isInvoice?: boolean }) {
   const vatAmount = data.totalTvac - data.totalHt;
+  const isRegie = data.billingType === "REGIE";
   return (
     <Document title={`${isInvoice ? "Facture" : "Devis"} ${data.reference}`} author={data.org.name}>
       <Page size="A4" style={s.page}>
@@ -117,8 +119,20 @@ export function QuotePdf({ data, isInvoice = false }: { data: QuotePdfData; isIn
           <Text style={{ fontSize: 9, color: INK, marginBottom: 12 }}>{data.description}</Text>
         )}
 
+        {!isInvoice && isRegie && (
+          <View style={{ backgroundColor: CREAM, borderLeft: `3px solid ${GOLD}`, padding: 8, marginBottom: 12 }}>
+            <Text style={{ fontSize: 9, fontFamily: "Helvetica-Bold", color: INK }}>Devis en régie</Text>
+            <Text style={{ fontSize: 8, color: GREY, marginTop: 2, lineHeight: 1.4 }}>
+              Les quantités et montants ci-dessous sont estimatifs. La facturation sera établie
+              sur la base du temps réellement presté, aux taux horaires / journaliers indiqués.
+            </Text>
+          </View>
+        )}
+
         {/* Lignes */}
-        <Text style={s.sectionTitle}>Détail des prestations</Text>
+        <Text style={s.sectionTitle}>
+          {!isInvoice && isRegie ? "Prestations & taux (régie — estimation)" : "Détail des prestations"}
+        </Text>
         <View style={s.table}>
           <View style={s.tr}>
             <Text style={[s.th, { flex: 5 }]}>Description</Text>
@@ -141,7 +155,7 @@ export function QuotePdf({ data, isInvoice = false }: { data: QuotePdfData; isIn
         {/* Totaux */}
         <View style={s.totals}>
           <View style={s.totalRow}>
-            <Text style={s.totalLabel}>Total HTVA</Text>
+            <Text style={s.totalLabel}>{!isInvoice && isRegie ? "Estimation HTVA" : "Total HTVA"}</Text>
             <Text style={s.totalValue}>{fmtMoney(data.totalHt)}</Text>
           </View>
           <View style={s.totalRow}>

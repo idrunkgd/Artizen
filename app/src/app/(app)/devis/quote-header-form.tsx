@@ -28,6 +28,7 @@ export function QuoteHeaderForm({
     customerAddressId: initial?.customerAddressId ?? prefill?.customerAddressId ?? "",
     title: initial?.title ?? "",
     description: initial?.description ?? "",
+    billingType: initial?.billingType ?? "FORFAIT",
     vatRate: String(initial?.vatRate ?? 21),
     validityDays: String(initial?.validityDays ?? 30),
     notes: initial?.notes ?? ""
@@ -150,6 +151,28 @@ export function QuoteHeaderForm({
           <textarea value={form.description} rows={3}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
                     className="input min-h-[80px]" />
+        </div>
+        <div>
+          <label className="label">Type de facturation *</label>
+          <div className="flex gap-2">
+            {([
+              ["FORFAIT", "Forfait", "Prix ferme"],
+              ["REGIE", "Régie", "À l'heure / jour"]
+            ] as const).map(([v, l, sub]) => (
+              <button key={v} type="button"
+                onClick={() => setForm({ ...form, billingType: v })}
+                className={"flex-1 py-2 rounded-xl border-2 font-semibold leading-tight " +
+                  (form.billingType === v ? "bg-ink text-cream border-ink" : "bg-white text-ink border-cream-300")}>
+                <div>{l}</div>
+                <div className="text-[11px] font-normal opacity-70">{sub}</div>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-ink-300 mt-1">
+            {form.billingType === "REGIE"
+              ? "Régie : le total du devis est une estimation. Tu factureras les heures réellement prestées (saisies dans le Timesheet du chantier)."
+              : "Forfait : prix ferme, facturé via les tranches de facturation."}
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>

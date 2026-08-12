@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
     title: quote.title,
     description: quote.description,
     status: quote.status,
+    billingType: quote.billingType,
     vatRate: Number(quote.vatRate),
     totalHt: Number(quote.totalHt),
     totalTvac: Number(quote.totalTvac),

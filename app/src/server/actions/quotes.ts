@@ -24,6 +24,7 @@ const QuoteSchema = z.object({
   customerAddressId: z.string().min(1),
   title: z.string().min(1).max(200),
   description: z.string().optional().nullable().transform((v) => v?.trim() || null),
+  billingType: z.enum(["FORFAIT", "REGIE"]).default("FORFAIT"),
   vatRate: z.coerce.number().min(0).max(50).default(21),
   validityDays: z.coerce.number().int().min(1).max(365).default(30),
   notes: z.string().optional().nullable().transform((v) => v?.trim() || null)

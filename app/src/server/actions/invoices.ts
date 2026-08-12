@@ -15,6 +15,10 @@ async function nextInvoiceReference(organizationId: string) {
   return `${prefix}${String(lastNum + 1).padStart(3, "0")}`;
 }
 
+function fmtDateShort(d: Date) {
+  return new Intl.DateTimeFormat("fr-BE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+}
+
 const InvoiceSchema = z.object({
   customerId: z.string().min(1),
   projectId: z.string().optional().nullable().transform((v) => v || null),
@@ -136,6 +140,96 @@ export async function createInvoiceFromMilestone(milestoneId: string) {
   return createInvoiceFromMilestones(m.quote.projectId, [milestoneId]);
 }
 
+/**
+ * Facture RÉGIE : génère une facture à partir des heures réellement prestées
+ * (Timesheet du chantier lié au devis) et non encore facturées. Les heures
+ * sont valorisées au taux horaire fourni (pré-rempli depuis le devis côté UI).
+ * Les entries couvertes sont marquées (invoiceId) pour ne jamais être
+ * refacturées ; la suppression de la facture les redevient facturables.
+ */
+export async function createInvoiceFromTimesheet(
+  quoteId: string,
+  hourlyRate: number,
+  entryIds?: string[]
+) {
+  const { organizationId } = await requireOrganization();
+  if (!(hourlyRate >= 0)) throw new Error("Taux horaire invalide");
+
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, organizationId },
+    include: { project: true }
+  });
+  if (!quote) throw new Error("Devis introuvable");
+  if (quote.billingType !== "REGIE") throw new Error("Ce devis n'est pas en régie");
+  if (!quote.projectId) throw new Error("Accepte d'abord le devis (le chantier n'existe pas encore)");
+
+  const entries = await prisma.timesheetEntry.findMany({
+    where: {
+      organizationId,
+      projectId: quote.projectId,
+      invoiceId: null,
+      ...(entryIds && entryIds.length ? { id: { in: entryIds } } : {})
+    },
+    orderBy: { date: "asc" }
+  });
+  if (entries.length === 0) {
+    throw new Error("Aucune heure à facturer (les heures prestées sont déjà toutes facturées)");
+  }
+
+  const totalHours = entries.reduce((sum: number, e: (typeof entries)[number]) => sum + Number(e.hours), 0);
+  const lineTotal = Math.round(totalHours * hourlyRate * 100) / 100;
+  const vatRate = Number(quote.vatRate);
+  const totalTvac = Math.round(lineTotal * (1 + vatRate / 100) * 100) / 100;
+
+  const reference = await nextInvoiceReference(organizationId);
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+  const dueDate = org?.paymentTermsDays
+    ? new Date(Date.now() + org.paymentTermsDays * 24 * 3600 * 1000)
+    : null;
+
+  const from = entries[0].date;
+  const to = entries[entries.length - 1].date;
+  const period = from.getTime() === to.getTime()
+    ? fmtDateShort(from)
+    : `${fmtDateShort(from)} → ${fmtDateShort(to)}`;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const inv = await tx.invoice.create({
+      data: {
+        organizationId, reference,
+        customerId: quote.customerId,
+        projectId: quote.projectId,
+        quoteId: quote.id,
+        title: `${quote.title} — régie (${period})`,
+        vatRate,
+        totalHt: lineTotal, totalTvac,
+        issueDate: new Date(), dueDate,
+        status: "DRAFT",
+        lines: {
+          create: [{
+            position: 1,
+            description: `Main d'œuvre en régie — ${totalHours} h prestées (${period})`,
+            quantity: totalHours, unit: "h",
+            unitPrice: hourlyRate,
+            totalHt: lineTotal
+          }]
+        }
+      }
+    });
+    await tx.timesheetEntry.updateMany({
+      where: { id: { in: entries.map((e: (typeof entries)[number]) => e.id) } },
+      data: { invoiceId: inv.id }
+    });
+    return inv;
+  });
+
+  revalidatePath("/factures");
+  revalidatePath(`/factures/${result.id}`);
+  revalidatePath(`/devis/${quoteId}`);
+  if (quote.projectId) revalidatePath(`/chantiers/${quote.projectId}`);
+  return { ok: true, id: result.id };
+}
+
 export async function updateInvoice(id: string, formData: FormData) {
   const { organizationId } = await requireOrganization();
   const data = InvoiceSchema.parse(Object.fromEntries(formData));
@@ -162,6 +256,11 @@ export async function deleteInvoice(id: string) {
   await prisma.quoteMilestone.updateMany({
     where: { invoiceId: id },
     data: { invoicedAt: null, invoiceId: null }
+  });
+  // Déverrouille aussi les heures de régie couvertes par cette facture.
+  await prisma.timesheetEntry.updateMany({
+    where: { invoiceId: id },
+    data: { invoiceId: null }
   });
   await prisma.invoice.delete({ where: { id } });
   revalidatePath("/factures");
