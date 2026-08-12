@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 250 248 241;       /* cream */
+  --fg: 10 10 10;          /* ink */
+  --gold: 201 162 39;      /* #C9A227 */
+}
+
+html, body { background: rgb(var(--bg)); color: rgb(var(--fg)); }
+
+* { -webkit-tap-highlight-color: transparent; }
+
+@layer components {
+  /* ─── Cards ─── */
+  .card {
+    @apply bg-white rounded-2xl border border-cream-300 shadow-soft;
+  }
+
+  /* ─── Inputs gros doigts ─── */
+  .input {
+    @apply w-full h-12 px-4 rounded-xl border-2 border-cream-300 bg-white text-base
+           focus:outline-none focus:border-gold focus:ring-0
+           disabled:opacity-60 disabled:bg-cream-200
+           placeholder:text-ink-300;
+  }
+  .label {
+    @apply block text-sm font-semibold text-ink mb-1.5;
+  }
+
+  /* ─── Buttons grosses touches mobiles ─── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 h-12 px-5 rounded-xl text-base font-semibold
+           transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary { @apply btn bg-ink text-cream hover:bg-ink-800 shadow-soft; }
+  .btn-gold    { @apply btn bg-gold text-ink hover:bg-gold-600 shadow-soft; }
+  .btn-secondary { @apply btn bg-white text-ink border-2 border-ink hover:bg-cream-200; }
+  .btn-ghost { @apply btn text-ink hover:bg-cream-200; }
+  .btn-sm { @apply h-10 px-4 text-sm; }
+  .btn-lg { @apply h-14 px-6 text-lg; }
+
+  /* ─── Bottom nav (mobile) ─── */
+  .bottom-tab {
+    @apply flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium
+           text-ink-300 transition-colors;
+  }
+  .bottom-tab.active {
+    @apply text-gold;
+  }
+
+  /* ─── Badges ─── */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold;
+  }
+  .badge-gold    { @apply badge bg-gold-100 text-gold-800; }
+  .badge-ink     { @apply badge bg-ink-100 text-ink-800; }
+  .badge-success { @apply badge bg-emerald-100 text-emerald-800; }
+  .badge-warning { @apply badge bg-amber-100 text-amber-800; }
+  .badge-danger  { @apply badge bg-red-100 text-red-800; }
+}
+
+/* Scrollbar discret en cohérence avec la charte */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #E5E2D9; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #A1A1AA; }

@@ -1,0 +1,568 @@
+// Artizen — schéma multi-tenant pour artisans indépendants du bâtiment.
+//
+// Concept clé : chaque "boîte" est une Organization, et TOUTES les entités
+// métier (Customer, Project, Quote, Invoice, etc.) portent un organizationId
+// qui les isole strictement. Le scoping par Organization est appliqué dans
+// chaque server action via getCurrentOrganization().
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// TENANT — Organization (= la boîte d'un artisan)
+// ============================================================
+
+model Organization {
+  id           String   @id @default(cuid())
+  /// Nom commercial visible (ex. « Maçonnerie Dupont »)
+  name         String
+  /// N° TVA / BCE de l'artisan (Belgique : BE0xxx.xxx.xxx)
+  vatNumber    String?
+  /// Adresse / téléphone / email pour les devis et factures
+  street       String?
+  postalCode   String?
+  city         String?
+  country      String?   @default("Belgique")
+  phone        String?
+  email        String?
+  iban         String?
+  /// Logo de la boîte (data URI ou URL) — affiché sur les devis et factures PDF
+  logoUrl      String?
+  /// Couleurs personnalisables — par défaut on prend la charte Artizen OR/NOIR
+  primaryColor String?   @default("#C9A227")
+  accentColor  String?   @default("#0a0a0a")
+  /// Délai de paiement par défaut sur les factures (jours fin de mois)
+  paymentTermsDays Int   @default(30)
+
+  memberships  Membership[]
+  customers    Customer[]
+  suppliers    Supplier[]
+  projects     Project[]
+  quotes       Quote[]
+  invoices     Invoice[]
+  timesheet    TimesheetEntry[]
+  materials    Material[]
+  tools        Tool[]
+  materialOrders MaterialOrder[]
+  /// Catalogue d'articles fournisseurs (utilisé dans les devis et la
+  /// génération automatique de bons de commande).
+  catalogItems CatalogItem[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum Role {
+  PATRON      // accès total
+  APPRENTI    // saisie heures, lecture chantiers
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           Role         @default(PATRON)
+  createdAt      DateTime     @default(now())
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  active       Boolean      @default(true)
+  memberships  Membership[]
+  /// Saisies de timesheet effectuées par cet user
+  timesheet    TimesheetEntry[] @relation("TimesheetUser")
+  /// Photos uploadées (qui a ajouté quoi)
+  photos       SitePhoto[]      @relation("PhotoUploader")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+// ============================================================
+// CLIENTS / FOURNISSEURS — annuaires
+// ============================================================
+
+model Customer {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Nom particulier ou raison sociale
+  name           String
+  /// PRO ou PARTICULIER — important pour TVA (PRO = facture HTVA déductible)
+  type           CustomerType @default(PARTICULIER)
+  vatNumber      String?
+  email          String?
+  phone          String?
+  street         String?
+  postalCode     String?
+  city           String?
+  country        String?      @default("Belgique")
+  notes          String?
+  /// Plusieurs adresses possibles par client (résidence principale, bureau,
+  /// appartement secondaire...). Pratique car un même particulier peut
+  /// faire des travaux à plusieurs adresses au fil du temps.
+  addresses      CustomerAddress[]
+  quotes         Quote[]
+  projects       Project[]
+  invoices       Invoice[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, name])
+}
+
+/// Adresse de chantier liée à un client. Plusieurs par client autorisé.
+/// Le projet peut soit pointer sur une de ces adresses, soit avoir sa
+/// propre adresse libre (les deux modes cohabitent).
+model CustomerAddress {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// Label libre pour distinguer plusieurs adresses (« Maison Bruxelles »,
+  /// « Appartement Liège », « Bureau Anvers »...)
+  label      String?
+  street     String
+  postalCode String?
+  city       String
+  country    String?  @default("Belgique")
+  /// Adresse principale → pré-sélectionnée par défaut dans les formulaires.
+  isPrimary  Boolean  @default(false)
+  notes      String?
+  projects   Project[]
+  quotes     Quote[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([customerId])
+}
+
+enum CustomerType {
+  PARTICULIER
+  PRO
+}
+
+model Supplier {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  vatNumber      String?
+  email          String?
+  phone          String?
+  notes          String?
+  materialOrders MaterialOrder[]
+  materials      Material[]   @relation("MaterialDefaultSupplier")
+  /// Catalogue d'articles habituellement commandés chez ce fournisseur
+  catalogItems   CatalogItem[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, name])
+}
+
+/// Article récurrent d'un fournisseur (référence exacte avec prix indicatif).
+/// Utilisé dans les devis (ligne "Référence exacte") et lors de la génération
+/// automatique des bons de commande matériel groupés par fournisseur.
+model CatalogItem {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierId     String
+  supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  /// Référence exacte du fournisseur (ex. "PVC-32-GAINE-3M")
+  reference      String
+  /// Libellé court affiché sur devis et bon de commande
+  label          String
+  /// Unité de vente : u, m, m², kg, pal, ...
+  unit           String       @default("u")
+  /// Prix unitaire HTVA indicatif (peut être ajusté ligne par ligne)
+  unitPriceHt    Decimal      @default(0) @db.Decimal(10, 2)
+  /// Taux TVA applicable (21% par défaut en BE)
+  vatRate        Decimal      @default(21) @db.Decimal(5, 2)
+  notes          String?
+  isActive       Boolean      @default(true)
+
+  quoteLines     QuoteLine[]
+  orderLines     MaterialOrderLine[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, supplierId])
+  @@index([organizationId, reference])
+  @@index([organizationId, label])
+}
+
+// ============================================================
+// CHANTIER (Project) — central pour l'artisan
+// ============================================================
+
+enum ProjectStatus {
+  PROSPECT    // pas commencé, devis en cours
+  ACTIVE      // chantier en cours
+  ON_HOLD     // pause (attente livraison, météo, etc.)
+  DONE        // terminé
+  CANCELLED   // abandonné
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Référence courte type CH-2026-001 (auto-générée)
+  reference      String
+  /// Nom du chantier (ex. « Salle de bain Dupont »)
+  name           String
+  description    String?
+  status         ProjectStatus @default(PROSPECT)
+
+  customerId     String?
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  /// Adresse de chantier liée au catalogue du client (peut être réutilisée
+  /// pour plusieurs projets sur la même maison/bâtiment). Si null on retombe
+  /// sur les siteStreet/sitePostalCode/siteCity ci-dessous pour de l'ad hoc.
+  customerAddressId String?
+  customerAddress   CustomerAddress? @relation(fields: [customerAddressId], references: [id], onDelete: SetNull)
+  /// Adresse libre (utilisée si customerAddressId est null OU pour override
+  /// ponctuel). Affichée prioritairement quand renseignée.
+  siteStreet     String?
+  sitePostalCode String?
+  siteCity       String?
+
+  startDate      DateTime?     @db.Date
+  endDate        DateTime?     @db.Date
+
+  /// Budget global indicatif (HTVA)
+  budgetEstimate Decimal?      @db.Decimal(12, 2)
+
+  quotes         Quote[]
+  invoices       Invoice[]
+  timesheet      TimesheetEntry[]
+  photos         SitePhoto[]
+  materialOrders MaterialOrder[]
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, status])
+}
+
+/// Photos prises sur le chantier depuis le mobile.
+model SitePhoto {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// Chemin RELATIF dans UPLOAD_STORAGE_PATH (ex. "<photoId>/photo.jpg")
+  storagePath String
+  caption     String?
+  takenAt     DateTime @default(now())
+  uploadedById String?
+  uploadedBy   User?   @relation("PhotoUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([projectId, takenAt])
+}
+
+// ============================================================
+// DEVIS — Quote (HTVA + TVA = TTC pour particuliers)
+// ============================================================
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REFUSED
+  EXPIRED
+  CANCELLED
+}
+
+model Quote {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reference      String       // ex. DEV-2026-001
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  /// Adresse de chantier visée par ce devis. Plusieurs devis peuvent
+  /// pointer la même adresse (ex. devis initial + avenants), et chaque
+  /// devis accepté donne naissance à un Project (chantier) — soit nouveau
+  /// soit associé à un chantier déjà ouvert à cette adresse.
+  customerAddressId String?
+  customerAddress   CustomerAddress? @relation(fields: [customerAddressId], references: [id], onDelete: SetNull)
+  projectId      String?
+  project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  title          String
+  description    String?
+  status         QuoteStatus  @default(DRAFT)
+  /// 21 = standard belge, 6 = travaux logement >10 ans, 0 = exonéré
+  vatRate        Decimal      @default(21) @db.Decimal(5, 2)
+  totalHt        Decimal      @default(0) @db.Decimal(12, 2)
+  totalTvac      Decimal      @default(0) @db.Decimal(12, 2)
+  validityDays   Int          @default(30)
+  sentAt         DateTime?
+  acceptedAt     DateTime?
+  notes          String?
+  lines          QuoteLine[]
+  milestones     QuoteMilestone[]
+  invoices       Invoice[]    @relation("InvoiceFromQuote")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, status])
+}
+
+model QuoteLine {
+  id          String  @id @default(cuid())
+  quoteId     String
+  quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  position    Int     @default(0)
+  /// Catégorie : MAIN_OEUVRE / FOURNITURE / SOUS_TRAITANCE / DEPLACEMENT / AUTRE
+  category    String  @default("MAIN_OEUVRE")
+  description String
+  quantity    Decimal @default(1) @db.Decimal(10, 3)
+  unit        String  @default("u")  // u, h, m, m², m³, kg, j (jour)
+  unitPrice   Decimal @default(0) @db.Decimal(10, 2)
+  totalHt     Decimal @default(0) @db.Decimal(12, 2)
+
+  /// Si renseigné, cette ligne est de type "Référence exacte" et permet de
+  /// générer automatiquement un bon de commande matériel chez le fournisseur
+  /// du CatalogItem à l'acceptation du devis.
+  catalogItemId String?
+  catalogItem   CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+
+  /// Lignes de commande matériel issues de cette ligne (pour ne pas créer
+  /// deux fois la même commande si on relance la génération).
+  generatedOrderLines MaterialOrderLine[]
+
+  @@index([quoteId, position])
+  @@index([catalogItemId])
+}
+
+/// Découpe du devis en tranches de facturation (acompte, intermédiaire, solde).
+model QuoteMilestone {
+  id          String   @id @default(cuid())
+  quoteId     String
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  position    Int      @default(0)
+  label       String   // "Acompte 30%", "Pose terminée", "Solde"
+  percentage  Decimal? @db.Decimal(5, 2)  // 30 = 30 %
+  amountHt    Decimal  @default(0) @db.Decimal(12, 2)
+  expectedAt  DateTime? @db.Date  // date prévue d'émission de la facture
+  /// Date de génération de la facture liée. Si non null, la tranche est
+  /// considérée comme "facturée" et n'apparaît plus dans la modal de
+  /// sélection sur le chantier.
+  invoicedAt  DateTime?
+  /// Facture qui a couvert cette tranche (utile pour navigation devis → facture).
+  invoiceId   String?
+  invoice     Invoice? @relation("InvoiceFromMilestones", fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([quoteId, position])
+  @@index([invoiceId])
+}
+
+// ============================================================
+// FACTURES — Invoice (générées depuis un devis ou créées libres)
+// ============================================================
+
+enum InvoiceStatus {
+  DRAFT
+  SENT       // envoyée au client
+  PAID
+  OVERDUE    // > date d'échéance, non payée
+  CANCELLED
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Tranches devis couvertes par cette facture (peut être vide si facture libre).
+  coveredMilestones QuoteMilestone[] @relation("InvoiceFromMilestones")
+  reference      String        // ex. FAC-2026-001 — séquentiel obligatoire en Belgique
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  projectId      String?
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  /// Si la facture est issue d'un devis (tranche d'une devis)
+  quoteId        String?
+  quote          Quote?        @relation("InvoiceFromQuote", fields: [quoteId], references: [id], onDelete: SetNull)
+
+  title          String
+  status         InvoiceStatus @default(DRAFT)
+  vatRate        Decimal       @default(21) @db.Decimal(5, 2)
+  totalHt        Decimal       @default(0) @db.Decimal(12, 2)
+  totalTvac      Decimal       @default(0) @db.Decimal(12, 2)
+  issueDate      DateTime      @default(now()) @db.Date
+  dueDate        DateTime?     @db.Date
+  paidAt         DateTime?
+  notes          String?
+  lines          InvoiceLine[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, status])
+}
+
+model InvoiceLine {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  position    Int     @default(0)
+  description String
+  quantity    Decimal @default(1) @db.Decimal(10, 3)
+  unit        String  @default("u")
+  unitPrice   Decimal @default(0) @db.Decimal(10, 2)
+  totalHt     Decimal @default(0) @db.Decimal(12, 2)
+
+  @@index([invoiceId, position])
+}
+
+// ============================================================
+// TIMESHEET — heures par chantier
+// ============================================================
+
+model TimesheetEntry {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation("TimesheetUser", fields: [userId], references: [id], onDelete: Cascade)
+  projectId      String?
+  project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  date           DateTime     @db.Date
+  hours          Decimal      @db.Decimal(4, 2)  // ex. 7.5
+  description    String?      // « pose carrelage », « démolition cloison »
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, date])
+  @@index([projectId, date])
+  @@index([userId, date])
+}
+
+// ============================================================
+// MATÉRIEL (stock) + OUTILLAGE + COMMANDES
+// ============================================================
+
+/// Matériel consommable : ciment, carrelage, peinture, etc. Stocké à l'atelier
+/// ou sur chantier. Décrémenté manuellement par l'artisan.
+model Material {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  unit           String       @default("u")  // sac, m², palette, ...
+  /// Stock actuel (peut être négatif si on a oublié de saisir des commandes)
+  stockQty       Decimal      @default(0) @db.Decimal(10, 3)
+  /// Prix unitaire d'achat indicatif (pour estimer la valeur stock)
+  unitCost       Decimal?     @db.Decimal(10, 2)
+  defaultSupplierId String?
+  defaultSupplier   Supplier? @relation("MaterialDefaultSupplier", fields: [defaultSupplierId], references: [id], onDelete: SetNull)
+  orderLines     MaterialOrderLine[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, name])
+}
+
+/// Outillage durable : perceuse, échafaudage, bétonnière. Pas de stock, juste
+/// inventaire avec localisation.
+model Tool {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  serialNumber   String?
+  brand          String?
+  purchaseDate   DateTime?    @db.Date
+  purchasePrice  Decimal?     @db.Decimal(10, 2)
+  /// Où se trouve l'outil : "Atelier", "Camion", ou nom d'un chantier
+  location       String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, name])
+}
+
+enum MaterialOrderStatus {
+  DRAFT
+  ORDERED
+  DELIVERED
+  CANCELLED
+}
+
+model MaterialOrder {
+  id             String              @id @default(cuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reference      String              // CMD-2026-001
+  supplierId     String?
+  supplier       Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  projectId      String?
+  project        Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  status         MaterialOrderStatus @default(DRAFT)
+  totalHt        Decimal             @default(0) @db.Decimal(12, 2)
+  orderedAt      DateTime?
+  expectedAt     DateTime?           @db.Date
+  deliveredAt    DateTime?
+  /// Date d'envoi du mail au fournisseur (NULL = pas encore envoyé)
+  emailedAt      DateTime?
+  /// Pour traçabilité : message d'erreur Resend si l'envoi a échoué
+  emailError     String?
+  notes          String?
+  lines          MaterialOrderLine[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, status])
+  @@index([organizationId, projectId])
+}
+
+model MaterialOrderLine {
+  id          String        @id @default(cuid())
+  orderId     String
+  order       MaterialOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  position    Int           @default(0)
+  /// Optionnel : lien vers un Material du catalogue pour incrémenter le stock
+  materialId  String?
+  material    Material?     @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  /// Si la ligne provient d'un article catalogue fournisseur (ligne devis
+  /// "Référence exacte"), on garde la trace pour pouvoir afficher la
+  /// référence exacte fournisseur sur le PDF.
+  catalogItemId String?
+  catalogItem   CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  /// Si la ligne a été générée à partir d'une ligne de devis, on garde
+  /// l'identifiant pour idempotence (ne pas re-générer en double).
+  sourceQuoteLineId String?
+  sourceQuoteLine   QuoteLine? @relation(fields: [sourceQuoteLineId], references: [id], onDelete: SetNull)
+  /// Référence affichée (snapshot, ne change pas si le catalogue évolue)
+  reference   String?
+  description String        // texte libre si pas dans le catalogue
+  quantity    Decimal       @default(1) @db.Decimal(10, 3)
+  unit        String        @default("u")
+  unitPrice   Decimal       @default(0) @db.Decimal(10, 2)
+  totalHt     Decimal       @default(0) @db.Decimal(12, 2)
+
+  @@index([orderId, position])
+  @@index([sourceQuoteLineId])
+}
