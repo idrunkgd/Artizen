@@ -2,7 +2,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Plus, Trash2, Loader2 } from "lucide-react";
-import { addTimesheetEntry, deleteTimesheetEntry } from "@/server/actions/timesheet";
+import { addTimesheetEntry, addTimesheetRange, deleteTimesheetEntry } from "@/server/actions/timesheet";
 
 type ProjectRef = { name: string; reference: string; customer?: { name: string } | null } | null;
 type Entry = { id: string; date: Date; hours: any; description: string | null; project: ProjectRef };
@@ -18,6 +18,8 @@ export function TimesheetClient({ projects, entries }: { projects: Project[]; en
   const [pending, start] = useTransition();
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({ projectId: "", date: today, hours: "8", description: "" });
+  const [mode, setMode] = useState<"day" | "range">("day");
+  const [range, setRange] = useState({ from: today, to: today, includeWeekend: false });
 
   function add() {
     if (!form.hours || Number(form.hours) <= 0) { toast.error("Indique le nombre d'heures"); return; }
@@ -28,6 +30,25 @@ export function TimesheetClient({ projects, entries }: { projects: Project[]; en
         await addTimesheetEntry(fd);
         toast.success("Heures enregistrées");
         setForm({ ...form, hours: "8", description: "" });
+      } catch (e: any) { toast.error(e?.message ?? "Erreur"); }
+    });
+  }
+
+  function addRange() {
+    if (!range.from || !range.to) { toast.error("Choisis les deux dates"); return; }
+    if (!form.hours || Number(form.hours) <= 0) { toast.error("Indique le nombre d'heures"); return; }
+    const fd = new FormData();
+    fd.set("projectId", form.projectId);
+    fd.set("from", range.from);
+    fd.set("to", range.to);
+    fd.set("hours", form.hours);
+    fd.set("description", form.description);
+    fd.set("includeWeekend", String(range.includeWeekend));
+    start(async () => {
+      try {
+        const r = await addTimesheetRange(fd);
+        toast.success(`${r.count} jour(s) enregistré(s)`);
+        setForm({ ...form, description: "" });
       } catch (e: any) { toast.error(e?.message ?? "Erreur"); }
     });
   }
@@ -62,17 +83,55 @@ export function TimesheetClient({ projects, entries }: { projects: Project[]; en
       <div className="card p-4 mb-4 border-2 border-gold">
         <h2 className="font-bold mb-3">Saisir mes heures</h2>
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Date</label>
-              <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="input" />
-            </div>
-            <div>
-              <label className="label">Heures</label>
-              <input type="number" step="0.25" min="0.25" max="24" value={form.hours}
-                     onChange={(e) => setForm({ ...form, hours: e.target.value })} className="input" />
-            </div>
+          <div className="flex gap-2">
+            {(["day", "range"] as const).map((m) => (
+              <button key={m} type="button" onClick={() => setMode(m)}
+                className={"flex-1 h-10 rounded-xl border-2 text-sm font-semibold " +
+                  (mode === m ? "bg-ink text-cream border-ink" : "bg-white text-ink border-cream-300")}>
+                {m === "day" ? "Un jour" : "Période"}
+              </button>
+            ))}
           </div>
+
+          {mode === "day" ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Date</label>
+                <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="input" />
+              </div>
+              <div>
+                <label className="label">Heures</label>
+                <input type="number" step="0.25" min="0.25" max="24" value={form.hours}
+                       onChange={(e) => setForm({ ...form, hours: e.target.value })} className="input" />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Du</label>
+                  <input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} className="input" />
+                </div>
+                <div>
+                  <label className="label">Au</label>
+                  <input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} className="input" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 items-center">
+                <div>
+                  <label className="label">Heures / jour</label>
+                  <input type="number" step="0.25" min="0.25" max="24" value={form.hours}
+                         onChange={(e) => setForm({ ...form, hours: e.target.value })} className="input" />
+                </div>
+                <label className="flex items-center gap-2 mt-5 cursor-pointer text-sm">
+                  <input type="checkbox" checked={range.includeWeekend}
+                         onChange={(e) => setRange({ ...range, includeWeekend: e.target.checked })} className="w-5 h-5" />
+                  Inclure week-ends
+                </label>
+              </div>
+              <p className="text-xs text-ink-300">Une saisie par jour ouvré ; les jours déjà remplis sont ignorés.</p>
+            </>
+          )}
           <div>
             <label className="label">Chantier</label>
             <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })} className="input">
@@ -85,8 +144,9 @@ export function TimesheetClient({ projects, entries }: { projects: Project[]; en
             <input value={form.description} placeholder="Ex. pose carrelage cuisine"
                    onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" />
           </div>
-          <button onClick={add} disabled={pending} className="btn-gold w-full btn-lg">
-            {pending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />} Enregistrer
+          <button onClick={mode === "day" ? add : addRange} disabled={pending} className="btn-gold w-full btn-lg">
+            {pending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+            {mode === "day" ? "Enregistrer" : "Enregistrer la période"}
           </button>
         </div>
       </div>

@@ -33,14 +33,17 @@ export default async function Page({ params }: { params: { id: string } }) {
 
   // Devis en régie du chantier (on facture ses heures, pas des tranches)
   const regieQuote = project.quotes.find((q) => q.billingType === "REGIE");
-  let regieUnbilled = { hours: 0, count: 0 };
+  let regieEntries: { date: string; hours: number }[] = [];
   if (regieQuote) {
-    const agg = await prisma.timesheetEntry.aggregate({
+    const rows = await prisma.timesheetEntry.findMany({
       where: { organizationId, projectId: project.id, invoiceId: null },
-      _sum: { hours: true },
-      _count: true
+      orderBy: { date: "asc" },
+      select: { date: true, hours: true }
     });
-    regieUnbilled = { hours: Number(agg._sum.hours ?? 0), count: agg._count };
+    regieEntries = rows.map((r) => ({
+      date: new Date(r.date).toISOString().slice(0, 10),
+      hours: Number(r.hours)
+    }));
   }
 
   // Liste des tranches dispos (acceptées et non encore facturées), groupées par devis
@@ -71,14 +74,13 @@ export default async function Page({ params }: { params: { id: string } }) {
       {regieQuote && (
         <div className="card p-4 mb-4 border-2 border-gold bg-gold/5">
           <h3 className="font-semibold mb-2">Heures à facturer (régie)</h3>
-          {regieUnbilled.hours > 0 ? (
+          {regieEntries.length > 0 ? (
             <CreateInvoiceFromTimesheetButton
               quoteId={regieQuote.id}
               quoteTitle={regieQuote.title}
               hourlyRate={Number(regieQuote.hourlyRate ?? 0)}
-              unbilledHours={regieUnbilled.hours}
-              entryCount={regieUnbilled.count}
               vatRate={Number(regieQuote.vatRate)}
+              entries={regieEntries}
             />
           ) : (
             <p className="text-sm text-ink-300">

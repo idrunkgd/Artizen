@@ -149,8 +149,8 @@ export async function createInvoiceFromMilestone(milestoneId: string) {
  */
 export async function createInvoiceFromTimesheet(
   quoteId: string,
-  hourlyRate?: number,
-  entryIds?: string[]
+  from?: string,
+  to?: string
 ) {
   const { organizationId } = await requireOrganization();
 
@@ -161,21 +161,25 @@ export async function createInvoiceFromTimesheet(
   if (!quote) throw new Error("Devis introuvable");
   if (quote.billingType !== "REGIE") throw new Error("Ce devis n'est pas en régie");
   if (!quote.projectId) throw new Error("Accepte d'abord le devis (le chantier n'existe pas encore)");
-  // Taux : celui passé explicitement, sinon celui défini sur le devis.
-  const rate = hourlyRate != null ? hourlyRate : Number(quote.hourlyRate ?? 0);
+  const rate = Number(quote.hourlyRate ?? 0);
   if (!(rate > 0)) throw new Error("Définis d'abord un taux horaire sur le devis en régie");
+
+  // Période optionnelle : ne facturer que les heures entre `from` et `to`.
+  const dateFilter: { gte?: Date; lte?: Date } = {};
+  if (from) dateFilter.gte = new Date(from + "T00:00:00Z");
+  if (to) dateFilter.lte = new Date(to + "T00:00:00Z");
 
   const entries = await prisma.timesheetEntry.findMany({
     where: {
       organizationId,
       projectId: quote.projectId,
       invoiceId: null,
-      ...(entryIds && entryIds.length ? { id: { in: entryIds } } : {})
+      ...(from || to ? { date: dateFilter } : {})
     },
     orderBy: { date: "asc" }
   });
   if (entries.length === 0) {
-    throw new Error("Aucune heure à facturer (les heures prestées sont déjà toutes facturées)");
+    throw new Error("Aucune heure à facturer sur cette période");
   }
 
   // Une ligne de facture par JOUR presté (tableau des heures par jour).
@@ -208,11 +212,11 @@ export async function createInvoiceFromTimesheet(
     ? new Date(Date.now() + org.paymentTermsDays * 24 * 3600 * 1000)
     : null;
 
-  const from = entries[0].date;
-  const to = entries[entries.length - 1].date;
-  const period = from.getTime() === to.getTime()
-    ? fmtDateShort(from)
-    : `${fmtDateShort(from)} → ${fmtDateShort(to)}`;
+  const firstDate = entries[0].date;
+  const lastDate = entries[entries.length - 1].date;
+  const period = firstDate.getTime() === lastDate.getTime()
+    ? fmtDateShort(firstDate)
+    : `${fmtDateShort(firstDate)} → ${fmtDateShort(lastDate)}`;
 
   const result = await prisma.$transaction(async (tx) => {
     const inv = await tx.invoice.create({

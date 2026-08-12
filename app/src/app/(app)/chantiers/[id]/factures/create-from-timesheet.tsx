@@ -1,34 +1,40 @@
 "use client";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, ReceiptText, Clock } from "lucide-react";
+import { Loader2, ReceiptText } from "lucide-react";
 import { createInvoiceFromTimesheet } from "@/server/actions/invoices";
 import { formatCurrency } from "@/lib/utils";
 
 /**
- * Bouton de facturation RÉGIE côté chantier : facture les heures prestées
- * non encore facturées, au taux horaire défini sur le devis régie.
+ * Facturation RÉGIE côté chantier, sur une PÉRIODE choisie : les champs Du/Au
+ * sont pré-remplis sur toute la plage des heures non facturées, et le montant
+ * se recalcule en direct. On ne facture que les heures de la période.
  */
 export function CreateInvoiceFromTimesheetButton({
-  quoteId, quoteTitle, hourlyRate, unbilledHours, entryCount, vatRate
+  quoteId, quoteTitle, hourlyRate, vatRate, entries
 }: {
   quoteId: string;
   quoteTitle: string;
   hourlyRate: number;
-  unbilledHours: number;
-  entryCount: number;
   vatRate: number;
+  entries: { date: string; hours: number }[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const amount = Math.round(unbilledHours * hourlyRate * 100) / 100;
+  const dates = entries.map((e) => e.date).sort();
+  const [from, setFrom] = useState(dates[0] ?? "");
+  const [to, setTo] = useState(dates[dates.length - 1] ?? "");
+
+  const inRange = entries.filter((e) => (!from || e.date >= from) && (!to || e.date <= to));
+  const hours = inRange.reduce((s, e) => s + e.hours, 0);
+  const amount = Math.round(hours * hourlyRate * 100) / 100;
 
   function submit() {
-    if (unbilledHours <= 0) { toast.error("Aucune heure à facturer"); return; }
+    if (hours <= 0) { toast.error("Aucune heure sur cette période"); return; }
     start(async () => {
       try {
-        const r = await createInvoiceFromTimesheet(quoteId);
+        const r = await createInvoiceFromTimesheet(quoteId, from || undefined, to || undefined);
         toast.success("Facture créée");
         router.push(`/factures/${r.id}`);
       } catch (e: any) { toast.error(e?.message ?? "Erreur"); }
@@ -37,20 +43,27 @@ export function CreateInvoiceFromTimesheetButton({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-sm">
-        <Clock className="w-4 h-4 text-gold" />
-        <span>
-          <strong>{unbilledHours} h</strong> non facturées
-          {" "}({entryCount} saisie{entryCount > 1 ? "s" : ""}) × {formatCurrency(hourlyRate)}/h
-        </span>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label">Du</label>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="input" />
+        </div>
+        <div>
+          <label className="label">Au</label>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input" />
+        </div>
       </div>
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-ink-300">{quoteTitle} · TVA {vatRate} %</span>
+
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-ink-300">
+          {quoteTitle} · <strong className="text-ink">{hours} h</strong> × {formatCurrency(hourlyRate)}/h · TVA {vatRate} %
+        </span>
         <span className="text-lg font-bold">{formatCurrency(amount)} HTVA</span>
       </div>
-      <button onClick={submit} disabled={pending || unbilledHours <= 0} className="btn-gold w-full">
+
+      <button onClick={submit} disabled={pending || hours <= 0} className="btn-gold w-full">
         {pending ? <Loader2 className="w-5 h-5 animate-spin" /> : <ReceiptText className="w-5 h-5" />}
-        Facturer les heures prestées
+        Facturer la période
       </button>
     </div>
   );
