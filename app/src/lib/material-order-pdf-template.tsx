@@ -72,7 +72,12 @@ export type MaterialOrderPdfData = {
 };
 
 function formatEUR(n: number) {
-  return new Intl.NumberFormat("fr-BE", { style: "currency", currency: "EUR" }).format(n);
+  // Espace normale (U+0020) : l'espace fine insécable du format fr-BE (U+202F)
+  // n'est pas rendue par la police Helvetica du PDF (milliers cassés ≥ 1000).
+  const neg = n < 0;
+  const [int, dec] = Math.abs(n).toFixed(2).split(".");
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${neg ? "-" : ""}${grouped},${dec} €`;
 }
 function formatDate(d: Date | null) {
   if (!d) return "—";

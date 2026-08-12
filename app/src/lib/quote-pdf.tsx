@@ -40,7 +40,13 @@ function fmtDate(d: Date | null) {
   return new Intl.DateTimeFormat("fr-BE", { dateStyle: "long" }).format(d);
 }
 function fmtMoney(n: number) {
-  return new Intl.NumberFormat("fr-BE", { style: "currency", currency: "EUR" }).format(n);
+  // Format € manuel avec ESPACE NORMALE (U+0020) : le format fr-BE d'Intl
+  // utilise une espace fine insécable (U+202F) que la police Helvetica du PDF
+  // ne sait pas rendre -> séparateur de milliers cassé sur les montants ≥ 1000.
+  const neg = n < 0;
+  const [int, dec] = Math.abs(n).toFixed(2).split(".");
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${neg ? "-" : ""}${grouped},${dec} €`;
 }
 
 export interface QuotePdfData {
