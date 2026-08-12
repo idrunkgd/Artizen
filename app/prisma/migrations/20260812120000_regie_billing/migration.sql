@@ -4,9 +4,6 @@ CREATE TYPE "BillingType" AS ENUM ('FORFAIT', 'REGIE');
 -- AlterTable : type de facturation du devis (forfait par défaut = comportement actuel)
 ALTER TABLE "Quote" ADD COLUMN "billingType" "BillingType" NOT NULL DEFAULT 'FORFAIT';
 
--- AlterTable : taux horaire pour les devis en régie
-ALTER TABLE "Quote" ADD COLUMN "hourlyRate" DECIMAL(10,2);
-
 -- AlterTable : lien heure de régie -> facture qui l'a couverte
 ALTER TABLE "TimesheetEntry" ADD COLUMN "invoiceId" TEXT;
 
