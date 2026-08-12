@@ -149,11 +149,10 @@ export async function createInvoiceFromMilestone(milestoneId: string) {
  */
 export async function createInvoiceFromTimesheet(
   quoteId: string,
-  hourlyRate: number,
+  hourlyRate?: number,
   entryIds?: string[]
 ) {
   const { organizationId } = await requireOrganization();
-  if (!(hourlyRate >= 0)) throw new Error("Taux horaire invalide");
 
   const quote = await prisma.quote.findFirst({
     where: { id: quoteId, organizationId },
@@ -162,6 +161,9 @@ export async function createInvoiceFromTimesheet(
   if (!quote) throw new Error("Devis introuvable");
   if (quote.billingType !== "REGIE") throw new Error("Ce devis n'est pas en régie");
   if (!quote.projectId) throw new Error("Accepte d'abord le devis (le chantier n'existe pas encore)");
+  // Taux : celui passé explicitement, sinon celui défini sur le devis.
+  const rate = hourlyRate != null ? hourlyRate : Number(quote.hourlyRate ?? 0);
+  if (!(rate > 0)) throw new Error("Définis d'abord un taux horaire sur le devis en régie");
 
   const entries = await prisma.timesheetEntry.findMany({
     where: {
@@ -177,7 +179,7 @@ export async function createInvoiceFromTimesheet(
   }
 
   const totalHours = entries.reduce((sum: number, e: (typeof entries)[number]) => sum + Number(e.hours), 0);
-  const lineTotal = Math.round(totalHours * hourlyRate * 100) / 100;
+  const lineTotal = Math.round(totalHours * rate * 100) / 100;
   const vatRate = Number(quote.vatRate);
   const totalTvac = Math.round(lineTotal * (1 + vatRate / 100) * 100) / 100;
 
@@ -210,7 +212,7 @@ export async function createInvoiceFromTimesheet(
             position: 1,
             description: `Main d'œuvre en régie — ${totalHours} h prestées (${period})`,
             quantity: totalHours, unit: "h",
-            unitPrice: hourlyRate,
+            unitPrice: rate,
             totalHt: lineTotal
           }]
         }

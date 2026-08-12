@@ -49,6 +49,7 @@ export interface QuotePdfData {
   description: string | null;
   status: string;
   billingType: string;
+  hourlyRate: number | null;
   vatRate: number;
   totalHt: number;
   totalTvac: number;
@@ -119,54 +120,61 @@ export function QuotePdf({ data, isInvoice = false }: { data: QuotePdfData; isIn
           <Text style={{ fontSize: 9, color: INK, marginBottom: 12 }}>{data.description}</Text>
         )}
 
-        {!isInvoice && isRegie && (
-          <View style={{ backgroundColor: CREAM, borderLeft: `3px solid ${GOLD}`, padding: 8, marginBottom: 12 }}>
-            <Text style={{ fontSize: 9, fontFamily: "Helvetica-Bold", color: INK }}>Devis en régie</Text>
-            <Text style={{ fontSize: 8, color: GREY, marginTop: 2, lineHeight: 1.4 }}>
-              Les quantités et montants ci-dessous sont estimatifs. La facturation sera établie
-              sur la base du temps réellement presté, aux taux horaires / journaliers indiqués.
+        {!isInvoice && isRegie ? (
+          /* Devis en régie : on affiche le taux horaire, pas de tableau de lignes. */
+          <View style={{ backgroundColor: CREAM, borderLeft: `3px solid ${GOLD}`, padding: 12, marginBottom: 12 }}>
+            <Text style={{ fontSize: 11, fontFamily: "Helvetica-Bold", color: INK }}>Prestation en régie</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <Text style={{ fontSize: 9, color: GREY }}>Taux horaire (HTVA)</Text>
+              <Text style={{ fontSize: 16, fontFamily: "Helvetica-Bold", color: GOLD }}>
+                {data.hourlyRate != null ? `${fmtMoney(data.hourlyRate)} / h` : "—"}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 8, color: GREY, marginTop: 8, lineHeight: 1.4 }}>
+              Facturation au temps réellement presté, à ce taux horaire, majoré de la TVA de {data.vatRate} %.
+              Le montant final dépend des heures effectivement réalisées sur le chantier.
             </Text>
           </View>
-        )}
-
-        {/* Lignes */}
-        <Text style={s.sectionTitle}>
-          {!isInvoice && isRegie ? "Prestations & taux (régie — estimation)" : "Détail des prestations"}
-        </Text>
-        <View style={s.table}>
-          <View style={s.tr}>
-            <Text style={[s.th, { flex: 5 }]}>Description</Text>
-            <Text style={[s.th, { flex: 1, textAlign: "right" }]}>Qté</Text>
-            <Text style={[s.th, { flex: 1, textAlign: "right" }]}>Unité</Text>
-            <Text style={[s.th, { flex: 1.5, textAlign: "right" }]}>P.U.</Text>
-            <Text style={[s.th, { flex: 1.5, textAlign: "right" }]}>Total HT</Text>
-          </View>
-          {data.lines.map((l, i) => (
-            <View key={i} style={s.tr}>
-              <Text style={[s.td, { flex: 5 }]}>{l.description}</Text>
-              <Text style={[s.td, { flex: 1, textAlign: "right" }]}>{l.quantity}</Text>
-              <Text style={[s.td, { flex: 1, textAlign: "right" }]}>{l.unit}</Text>
-              <Text style={[s.td, { flex: 1.5, textAlign: "right" }]}>{fmtMoney(l.unitPrice)}</Text>
-              <Text style={[s.td, { flex: 1.5, textAlign: "right", fontFamily: "Helvetica-Bold" }]}>{fmtMoney(l.totalHt)}</Text>
+        ) : (
+          <>
+            {/* Lignes */}
+            <Text style={s.sectionTitle}>Détail des prestations</Text>
+            <View style={s.table}>
+              <View style={s.tr}>
+                <Text style={[s.th, { flex: 5 }]}>Description</Text>
+                <Text style={[s.th, { flex: 1, textAlign: "right" }]}>Qté</Text>
+                <Text style={[s.th, { flex: 1, textAlign: "right" }]}>Unité</Text>
+                <Text style={[s.th, { flex: 1.5, textAlign: "right" }]}>P.U.</Text>
+                <Text style={[s.th, { flex: 1.5, textAlign: "right" }]}>Total HT</Text>
+              </View>
+              {data.lines.map((l, i) => (
+                <View key={i} style={s.tr}>
+                  <Text style={[s.td, { flex: 5 }]}>{l.description}</Text>
+                  <Text style={[s.td, { flex: 1, textAlign: "right" }]}>{l.quantity}</Text>
+                  <Text style={[s.td, { flex: 1, textAlign: "right" }]}>{l.unit}</Text>
+                  <Text style={[s.td, { flex: 1.5, textAlign: "right" }]}>{fmtMoney(l.unitPrice)}</Text>
+                  <Text style={[s.td, { flex: 1.5, textAlign: "right", fontFamily: "Helvetica-Bold" }]}>{fmtMoney(l.totalHt)}</Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
 
-        {/* Totaux */}
-        <View style={s.totals}>
-          <View style={s.totalRow}>
-            <Text style={s.totalLabel}>{!isInvoice && isRegie ? "Estimation HTVA" : "Total HTVA"}</Text>
-            <Text style={s.totalValue}>{fmtMoney(data.totalHt)}</Text>
-          </View>
-          <View style={s.totalRow}>
-            <Text style={s.totalLabel}>TVA {data.vatRate} %</Text>
-            <Text style={s.totalValue}>{fmtMoney(vatAmount)}</Text>
-          </View>
-          <View style={[s.totalRow, { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${GOLD}` }]}>
-            <Text style={[s.totalLabel, { color: GOLD }]}>TOTAL TVAC</Text>
-            <Text style={s.grandTotal}>{fmtMoney(data.totalTvac)}</Text>
-          </View>
-        </View>
+            {/* Totaux */}
+            <View style={s.totals}>
+              <View style={s.totalRow}>
+                <Text style={s.totalLabel}>Total HTVA</Text>
+                <Text style={s.totalValue}>{fmtMoney(data.totalHt)}</Text>
+              </View>
+              <View style={s.totalRow}>
+                <Text style={s.totalLabel}>TVA {data.vatRate} %</Text>
+                <Text style={s.totalValue}>{fmtMoney(vatAmount)}</Text>
+              </View>
+              <View style={[s.totalRow, { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${GOLD}` }]}>
+                <Text style={[s.totalLabel, { color: GOLD }]}>TOTAL TVAC</Text>
+                <Text style={s.grandTotal}>{fmtMoney(data.totalTvac)}</Text>
+              </View>
+            </View>
+          </>
+        )}
 
         {/* Tranches */}
         {data.milestones.length > 0 && (

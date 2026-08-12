@@ -25,6 +25,11 @@ const QuoteSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().optional().nullable().transform((v) => v?.trim() || null),
   billingType: z.enum(["FORFAIT", "REGIE"]).default("FORFAIT"),
+  /// Taux horaire régie. Champ vide (forfait) -> null.
+  hourlyRate: z.preprocess(
+    (v) => (v === "" || v === undefined || v === null ? null : Number(v)),
+    z.number().nonnegative().nullable()
+  ),
   vatRate: z.coerce.number().min(0).max(50).default(21),
   validityDays: z.coerce.number().int().min(1).max(365).default(30),
   notes: z.string().optional().nullable().transform((v) => v?.trim() || null)

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireOrganization } from "@/lib/session";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { CreateInvoiceFromMilestonesButton } from "./create-from-milestones";
+import { CreateInvoiceFromTimesheetButton } from "./create-from-timesheet";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,18 @@ export default async function Page({ params }: { params: { id: string } }) {
   });
   if (!project) return null;
 
+  // Devis en régie du chantier (on facture ses heures, pas des tranches)
+  const regieQuote = project.quotes.find((q) => q.billingType === "REGIE");
+  let regieUnbilled = { hours: 0, count: 0 };
+  if (regieQuote) {
+    const agg = await prisma.timesheetEntry.aggregate({
+      where: { organizationId, projectId: project.id, invoiceId: null },
+      _sum: { hours: true },
+      _count: true
+    });
+    regieUnbilled = { hours: Number(agg._sum.hours ?? 0), count: agg._count };
+  }
+
   // Liste des tranches dispos (acceptées et non encore facturées), groupées par devis
   const availableByQuote = project.quotes
     .map((q) => ({
@@ -53,6 +66,27 @@ export default async function Page({ params }: { params: { id: string } }) {
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-bold text-lg">Factures du chantier ({project.invoices.length})</h2>
       </div>
+
+      {/* Facturation régie : heures prestées */}
+      {regieQuote && (
+        <div className="card p-4 mb-4 border-2 border-gold bg-gold/5">
+          <h3 className="font-semibold mb-2">Heures à facturer (régie)</h3>
+          {regieUnbilled.hours > 0 ? (
+            <CreateInvoiceFromTimesheetButton
+              quoteId={regieQuote.id}
+              quoteTitle={regieQuote.title}
+              hourlyRate={Number(regieQuote.hourlyRate ?? 0)}
+              unbilledHours={regieUnbilled.hours}
+              entryCount={regieUnbilled.count}
+              vatRate={Number(regieQuote.vatRate)}
+            />
+          ) : (
+            <p className="text-sm text-ink-300">
+              Aucune heure en attente. Saisis des heures dans l'onglet <strong>Heures</strong> — elles apparaîtront ici à facturer.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Création depuis tranches */}
       {availableByQuote.length > 0 ? (

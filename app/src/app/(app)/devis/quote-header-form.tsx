@@ -29,6 +29,7 @@ export function QuoteHeaderForm({
     title: initial?.title ?? "",
     description: initial?.description ?? "",
     billingType: initial?.billingType ?? "FORFAIT",
+    hourlyRate: initial?.hourlyRate != null ? String(initial.hourlyRate) : "",
     vatRate: String(initial?.vatRate ?? 21),
     validityDays: String(initial?.validityDays ?? 30),
     notes: initial?.notes ?? ""
@@ -53,6 +54,7 @@ export function QuoteHeaderForm({
     if (!form.title.trim()) { toast.error("Titre obligatoire"); return; }
     if (!form.customerId) { toast.error("Client obligatoire"); return; }
     if (!form.customerAddressId) { toast.error("Adresse de chantier obligatoire"); return; }
+    if (form.billingType === "REGIE" && !(Number(form.hourlyRate) > 0)) { toast.error("Taux horaire obligatoire en régie"); return; }
     const fd = new FormData();
     Object.entries(form).forEach(([k, v]) => fd.set(k, v));
     start(async () => {
@@ -170,10 +172,19 @@ export function QuoteHeaderForm({
           </div>
           <p className="text-xs text-ink-300 mt-1">
             {form.billingType === "REGIE"
-              ? "Régie : le total du devis est une estimation. Tu factureras les heures réellement prestées (saisies dans le Timesheet du chantier)."
+              ? "Régie : tu donnes juste un taux horaire. Les heures se facturent ensuite depuis le chantier."
               : "Forfait : prix ferme, facturé via les tranches de facturation."}
           </p>
         </div>
+        {form.billingType === "REGIE" && (
+          <div>
+            <label className="label">Taux horaire (€ HT / h) *</label>
+            <input type="number" step="0.01" min={0} value={form.hourlyRate}
+                   placeholder="Ex. 45"
+                   onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
+                   className="input" />
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">TVA (%)</label>

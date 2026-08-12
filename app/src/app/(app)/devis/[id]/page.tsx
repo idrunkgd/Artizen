@@ -1,14 +1,13 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Download, Send, Check, X } from "lucide-react";
+import { ArrowLeft, Download, Clock } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireOrganization } from "@/lib/session";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { QuoteHeaderForm } from "../quote-header-form";
 import { LinesEditor } from "./lines-editor";
 import { MilestonesEditor } from "./milestones-editor";
 import { StatusActions } from "./status-actions";
-import { RegieBilling } from "./regie-billing";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +27,6 @@ export default async function Page({ params }: { params: { id: string } }) {
       where: { id: params.id, organizationId },
       include: {
         customer: true, project: true, customerAddress: true,
-        // include catalogItem + supplier pour afficher la pastille
-        // "Référence X · Fournisseur Y" sur chaque ligne du devis
         lines: {
           orderBy: { position: "asc" },
           include: { catalogItem: { include: { supplier: { select: { name: true } } } } }
@@ -50,23 +47,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   ]);
   if (!quote) notFound();
   const st = STATUS_MAP[quote.status];
-
   const isRegie = quote.billingType === "REGIE";
-  // Taux horaire par défaut = 1re ligne du devis exprimée en heures.
-  const hourLine = quote.lines.find((l) => l.unit === "h");
-  const defaultRate = hourLine ? Number(hourLine.unitPrice) : 0;
-  // Heures prestées non encore facturées (régie + chantier déjà créé).
-  let unbilledHours = 0;
-  let entryCount = 0;
-  if (isRegie && quote.projectId) {
-    const agg = await prisma.timesheetEntry.aggregate({
-      where: { organizationId, projectId: quote.projectId, invoiceId: null },
-      _sum: { hours: true },
-      _count: true
-    });
-    unbilledHours = Number(agg._sum.hours ?? 0);
-    entryCount = agg._count;
-  }
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
@@ -84,13 +65,6 @@ export default async function Page({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      {isRegie && (
-        <div className="mb-4 rounded-xl border-2 border-gold/40 bg-gold/10 p-3 text-sm text-ink">
-          <strong>Devis en régie</strong> — les montants ci-dessous sont une <strong>estimation</strong>.
-          La facturation se fait au temps réellement presté (heures du Timesheet du chantier).
-        </div>
-      )}
-
       {/* Actions principales */}
       <div className="flex flex-wrap gap-2 mb-5">
         <a href={`/api/devis-pdf?id=${quote.id}`} target="_blank" className="btn-primary">
@@ -99,51 +73,65 @@ export default async function Page({ params }: { params: { id: string } }) {
         <StatusActions quoteId={quote.id} currentStatus={quote.status} customerAddressId={quote.customerAddressId} quoteTitle={quote.title} />
       </div>
 
-      {/* Total */}
-      <div className="card p-5 mb-4 bg-ink text-cream">
-        <div className="grid grid-cols-3 gap-3 text-center">
-          <div>
-            <div className="text-xs text-cream/60 uppercase tracking-wider">Total HTVA</div>
-            <div className="text-xl font-bold mt-1">{formatCurrency(Number(quote.totalHt))}</div>
-          </div>
-          <div className="border-x border-cream/20">
-            <div className="text-xs text-cream/60 uppercase tracking-wider">TVA {Number(quote.vatRate)}%</div>
-            <div className="text-xl font-bold mt-1">{formatCurrency(Number(quote.totalTvac) - Number(quote.totalHt))}</div>
-          </div>
-          <div>
-            <div className="text-xs text-cream/60 uppercase tracking-wider">Total TVAC</div>
-            <div className="text-2xl font-black text-gold mt-1">{formatCurrency(Number(quote.totalTvac))}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Lignes */}
-      <section className="mb-5">
-        <h2 className="font-bold text-lg mb-3">
-          {isRegie
-            ? `Prestations & taux — estimation (${quote.lines.length})`
-            : `Lignes du devis (${quote.lines.length})`}
-        </h2>
-        <LinesEditor quoteId={quote.id} lines={quote.lines as any} />
-      </section>
-
-      {/* Facturation : tranches (forfait) OU heures prestées (régie) */}
       {isRegie ? (
-        <section className="mb-5">
-          <h2 className="font-bold text-lg mb-3">Facturer les heures prestées</h2>
-          <RegieBilling
-            quoteId={quote.id}
-            hasProject={!!quote.projectId}
-            unbilledHours={unbilledHours}
-            entryCount={entryCount}
-            defaultRate={defaultRate}
-          />
-        </section>
+        /* ─── RÉGIE : taux horaire + renvoi vers le chantier (aucune facturation ici) ─── */
+        <>
+          <div className="card p-5 mb-4 bg-ink text-cream">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-gold" />
+                <span className="text-sm text-cream/70 uppercase tracking-wider">Taux horaire · régie</span>
+              </div>
+              <div className="text-2xl font-black text-gold">
+                {quote.hourlyRate != null ? `${formatCurrency(Number(quote.hourlyRate))} / h` : "— à définir —"}
+              </div>
+            </div>
+            <p className="text-xs text-cream/60 mt-2">HT · TVA {Number(quote.vatRate)} %</p>
+          </div>
+
+          <div className="card p-4 mb-5 bg-gold/5 border-2 border-gold/30 text-sm">
+            {quote.project ? (
+              <>
+                Ce devis est gagné : la facturation des heures se fait sur le chantier{" "}
+                <Link href={`/chantiers/${quote.project.id}/factures`} className="font-semibold text-gold-700 underline">
+                  {quote.project.name}
+                </Link>. Ici, plus rien à faire — c'est une fiche d'information.
+              </>
+            ) : (
+              <>Renseigne le taux horaire ci-dessous, envoie puis accepte le devis. La facturation des heures se fera ensuite depuis le chantier.</>
+            )}
+          </div>
+        </>
       ) : (
-        <section className="mb-5">
-          <h2 className="font-bold text-lg mb-3">Tranches de facturation ({quote.milestones.length})</h2>
-          <MilestonesEditor quoteId={quote.id} milestones={quote.milestones as any} totalHt={Number(quote.totalHt)} />
-        </section>
+        /* ─── FORFAIT : total + lignes + tranches ─── */
+        <>
+          <div className="card p-5 mb-4 bg-ink text-cream">
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <div className="text-xs text-cream/60 uppercase tracking-wider">Total HTVA</div>
+                <div className="text-xl font-bold mt-1">{formatCurrency(Number(quote.totalHt))}</div>
+              </div>
+              <div className="border-x border-cream/20">
+                <div className="text-xs text-cream/60 uppercase tracking-wider">TVA {Number(quote.vatRate)}%</div>
+                <div className="text-xl font-bold mt-1">{formatCurrency(Number(quote.totalTvac) - Number(quote.totalHt))}</div>
+              </div>
+              <div>
+                <div className="text-xs text-cream/60 uppercase tracking-wider">Total TVAC</div>
+                <div className="text-2xl font-black text-gold mt-1">{formatCurrency(Number(quote.totalTvac))}</div>
+              </div>
+            </div>
+          </div>
+
+          <section className="mb-5">
+            <h2 className="font-bold text-lg mb-3">Lignes du devis ({quote.lines.length})</h2>
+            <LinesEditor quoteId={quote.id} lines={quote.lines as any} />
+          </section>
+
+          <section className="mb-5">
+            <h2 className="font-bold text-lg mb-3">Tranches de facturation ({quote.milestones.length})</h2>
+            <MilestonesEditor quoteId={quote.id} milestones={quote.milestones as any} totalHt={Number(quote.totalHt)} />
+          </section>
+        </>
       )}
 
       {/* Édition header */}

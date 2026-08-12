@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     description: quote.description,
     status: quote.status,
     billingType: quote.billingType,
+    hourlyRate: quote.hourlyRate != null ? Number(quote.hourlyRate) : null,
     vatRate: Number(quote.vatRate),
     totalHt: Number(quote.totalHt),
     totalTvac: Number(quote.totalTvac),

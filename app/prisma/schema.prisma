@@ -321,6 +321,8 @@ model Quote {
   status         QuoteStatus  @default(DRAFT)
   /// FORFAIT (prix ferme) ou REGIE (facturation au temps presté).
   billingType    BillingType  @default(FORFAIT)
+  /// Taux horaire (€ HT / h) pour un devis en régie. Null en forfait.
+  hourlyRate     Decimal?     @db.Decimal(10, 2)
   /// 21 = standard belge, 6 = travaux logement >10 ans, 0 = exonéré
   vatRate        Decimal      @default(21) @db.Decimal(5, 2)
   totalHt        Decimal      @default(0) @db.Decimal(12, 2)
