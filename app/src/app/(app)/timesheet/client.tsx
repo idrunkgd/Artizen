@@ -4,8 +4,15 @@ import { toast } from "sonner";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { addTimesheetEntry, deleteTimesheetEntry } from "@/server/actions/timesheet";
 
-type Entry = { id: string; date: Date; hours: any; description: string | null; project: { name: string; reference: string } | null };
-type Project = { id: string; name: string; reference: string };
+type ProjectRef = { name: string; reference: string; customer?: { name: string } | null } | null;
+type Entry = { id: string; date: Date; hours: any; description: string | null; project: ProjectRef };
+type Project = { id: string; name: string; reference: string; customer?: { name: string } | null };
+
+// Affiche « CLIENT — CHANTIER » (ou juste le chantier si pas de client).
+function projLabel(p: ProjectRef | Project): string {
+  if (!p) return "";
+  return p.customer?.name ? `${p.customer.name} — ${p.name}` : p.name;
+}
 
 export function TimesheetClient({ projects, entries }: { projects: Project[]; entries: Entry[] }) {
   const [pending, start] = useTransition();
@@ -70,7 +77,7 @@ export function TimesheetClient({ projects, entries }: { projects: Project[]; en
             <label className="label">Chantier</label>
             <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })} className="input">
               <option value="">— Pas de chantier —</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}
             </select>
           </div>
           <div>
@@ -108,7 +115,7 @@ export function TimesheetClient({ projects, entries }: { projects: Project[]; en
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium">
                           <span className="text-gold-700 font-bold">{Number(e.hours).toFixed(2)} h</span>
-                          {e.project && ` · ${e.project.name}`}
+                          {e.project && ` · ${projLabel(e.project)}`}
                         </div>
                         {e.description && <div className="text-xs text-ink-300 mt-0.5">{e.description}</div>}
                       </div>

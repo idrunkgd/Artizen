@@ -178,8 +178,27 @@ export async function createInvoiceFromTimesheet(
     throw new Error("Aucune heure à facturer (les heures prestées sont déjà toutes facturées)");
   }
 
-  const totalHours = entries.reduce((sum: number, e: (typeof entries)[number]) => sum + Number(e.hours), 0);
-  const lineTotal = Math.round(totalHours * rate * 100) / 100;
+  // Une ligne de facture par JOUR presté (tableau des heures par jour).
+  const byDay = new Map<string, { hours: number; descs: string[] }>();
+  for (const e of entries) {
+    const key = fmtDateShort(e.date);
+    const g = byDay.get(key) ?? { hours: 0, descs: [] };
+    g.hours += Number(e.hours);
+    if (e.description) g.descs.push(e.description);
+    byDay.set(key, g);
+  }
+  const dayLines = Array.from(byDay.entries()).map(([day, g], i) => {
+    const uniq = Array.from(new Set(g.descs));
+    return {
+      position: i + 1,
+      description: `Régie ${day}${uniq.length ? " — " + uniq.join(", ") : ""}`,
+      quantity: g.hours,
+      unit: "h",
+      unitPrice: rate,
+      totalHt: Math.round(g.hours * rate * 100) / 100
+    };
+  });
+  const lineTotal = dayLines.reduce((s, l) => s + l.totalHt, 0);
   const vatRate = Number(quote.vatRate);
   const totalTvac = Math.round(lineTotal * (1 + vatRate / 100) * 100) / 100;
 
@@ -207,15 +226,7 @@ export async function createInvoiceFromTimesheet(
         totalHt: lineTotal, totalTvac,
         issueDate: new Date(), dueDate,
         status: "DRAFT",
-        lines: {
-          create: [{
-            position: 1,
-            description: `Main d'œuvre en régie — ${totalHours} h prestées (${period})`,
-            quantity: totalHours, unit: "h",
-            unitPrice: rate,
-            totalHt: lineTotal
-          }]
-        }
+        lines: { create: dayLines }
       }
     });
     await tx.timesheetEntry.updateMany({

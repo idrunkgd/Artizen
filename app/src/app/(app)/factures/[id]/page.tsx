@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Download, Hammer, User as UserIcon } from "lucide-react";
+import { ArrowLeft, Hammer, User as UserIcon } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireOrganization } from "@/lib/session";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { PdfPreviewButton } from "@/components/pdf-preview";
 import { InvoiceLines } from "./lines";
 import { InvoiceStatusActions } from "./status-actions";
 import { MinimalInvoiceEditor } from "./minimal-editor";
@@ -61,9 +62,7 @@ export default async function Page({ params }: { params: { id: string } }) {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-5">
-        <a href={`/api/facture-pdf?id=${invoice.id}`} target="_blank" className="btn-primary">
-          <Download className="w-5 h-5" /> PDF
-        </a>
+        <PdfPreviewButton url={`/api/facture-pdf?id=${invoice.id}`} filename={`Facture-${invoice.reference}.pdf`} />
         <InvoiceStatusActions invoiceId={invoice.id} currentStatus={invoice.status} />
       </div>
 
@@ -78,7 +77,7 @@ export default async function Page({ params }: { params: { id: string } }) {
 
       {/* Lignes (read-only avec lien vers tranche source) */}
       <section className="mb-5">
-        <h2 className="font-bold text-lg mb-3">Lignes (tranches facturées)</h2>
+        <h2 className="font-bold text-lg mb-3">Détail de la facture</h2>
         <InvoiceLines lines={invoice.lines as any} coveredMilestones={invoice.coveredMilestones as any} />
       </section>
 

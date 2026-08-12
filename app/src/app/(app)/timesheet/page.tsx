@@ -10,7 +10,7 @@ export default async function Page() {
     prisma.project.findMany({
       where: { organizationId, status: { in: ["ACTIVE", "PROSPECT", "ON_HOLD"] } },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, reference: true }
+      select: { id: true, name: true, reference: true, customer: { select: { name: true } } }
     }),
     // 30 derniers jours
     prisma.timesheetEntry.findMany({
@@ -20,7 +20,7 @@ export default async function Page() {
         date: { gte: new Date(Date.now() - 30 * 24 * 3600 * 1000) }
       },
       orderBy: { date: "desc" },
-      include: { project: { select: { name: true, reference: true } } }
+      include: { project: { select: { name: true, reference: true, customer: { select: { name: true } } } } }
     })
   ]);
   return (

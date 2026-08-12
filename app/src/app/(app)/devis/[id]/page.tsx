@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Download, Clock } from "lucide-react";
+import { ArrowLeft, Clock } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireOrganization } from "@/lib/session";
 import { formatCurrency } from "@/lib/utils";
+import { PdfPreviewButton } from "@/components/pdf-preview";
 import { QuoteHeaderForm } from "../quote-header-form";
 import { LinesEditor } from "./lines-editor";
 import { MilestonesEditor } from "./milestones-editor";
@@ -67,9 +68,7 @@ export default async function Page({ params }: { params: { id: string } }) {
 
       {/* Actions principales */}
       <div className="flex flex-wrap gap-2 mb-5">
-        <a href={`/api/devis-pdf?id=${quote.id}`} target="_blank" className="btn-primary">
-          <Download className="w-5 h-5" /> Télécharger le PDF
-        </a>
+        <PdfPreviewButton url={`/api/devis-pdf?id=${quote.id}`} filename={`Devis-${quote.reference}.pdf`} />
         <StatusActions quoteId={quote.id} currentStatus={quote.status} customerAddressId={quote.customerAddressId} quoteTitle={quote.title} />
       </div>
 
