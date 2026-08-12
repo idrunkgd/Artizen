@@ -12,15 +12,14 @@ export default async function Page() {
       orderBy: { name: "asc" },
       select: { id: true, name: true, reference: true, customer: { select: { name: true } } }
     }),
-    // 30 derniers jours
+    // Tout l'historique de l'utilisateur (l'onglet Historique filtre côté client)
     prisma.timesheetEntry.findMany({
       where: {
         organizationId,
-        userId: session.user.id as string,
-        date: { gte: new Date(Date.now() - 30 * 24 * 3600 * 1000) }
+        userId: session.user.id as string
       },
       orderBy: { date: "desc" },
-      include: { project: { select: { name: true, reference: true, customer: { select: { name: true } } } } }
+      include: { project: { select: { id: true, name: true, reference: true, customer: { select: { name: true } } } } }
     })
   ]);
   return (
