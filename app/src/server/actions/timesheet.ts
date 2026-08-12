@@ -91,6 +91,9 @@ export async function deleteTimesheetEntry(id: string) {
     where: { id, organizationId, userId: session.user.id as string }
   });
   if (!e) throw new Error("Saisie introuvable");
+  if (e.invoiceId) {
+    throw new Error("Ces heures sont déjà sur une facture. Supprime la facture brouillon (ou fais une note de crédit si elle est envoyée) avant de les modifier.");
+  }
   await prisma.timesheetEntry.delete({ where: { id } });
   revalidatePath("/timesheet");
   return { ok: true };

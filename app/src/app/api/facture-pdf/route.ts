@@ -19,7 +19,11 @@ export async function GET(req: NextRequest) {
 
   const inv = await prisma.invoice.findFirst({
     where: { id, organizationId },
-    include: { organization: true, customer: true, project: true, lines: { orderBy: { position: "asc" } } }
+    include: {
+      organization: true, customer: true, project: true,
+      lines: { orderBy: { position: "asc" } },
+      creditNoteOf: { select: { reference: true } }
+    }
   });
   if (!inv) return new Response("Not found", { status: 404 });
 
@@ -29,6 +33,9 @@ export async function GET(req: NextRequest) {
     title: inv.title,
     description: inv.notes,
     status: inv.status,
+    billingType: "FORFAIT",
+    hourlyRate: null,
+    creditNoteOf: inv.creditNoteOf?.reference ?? null,
     vatRate: Number(inv.vatRate),
     totalHt: Number(inv.totalHt),
     totalTvac: Number(inv.totalTvac),

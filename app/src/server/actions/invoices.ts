@@ -19,6 +19,17 @@ function fmtDateShort(d: Date) {
   return new Intl.DateTimeFormat("fr-BE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
 }
 
+async function nextCreditNoteReference(organizationId: string) {
+  const year = new Date().getFullYear();
+  const prefix = `NC-${year}-`;
+  const last = await prisma.invoice.findFirst({
+    where: { organizationId, reference: { startsWith: prefix } },
+    orderBy: { reference: "desc" }, select: { reference: true }
+  });
+  const lastNum = last ? parseInt(last.reference.slice(prefix.length), 10) || 0 : 0;
+  return `${prefix}${String(lastNum + 1).padStart(3, "0")}`;
+}
+
 const InvoiceSchema = z.object({
   customerId: z.string().min(1),
   projectId: z.string().optional().nullable().transform((v) => v || null),
@@ -245,6 +256,55 @@ export async function createInvoiceFromTimesheet(
   revalidatePath(`/devis/${quoteId}`);
   if (quote.projectId) revalidatePath(`/chantiers/${quote.projectId}`);
   return { ok: true, id: result.id };
+}
+
+/**
+ * Crée une NOTE DE CRÉDIT (avoir) qui annule intégralement une facture :
+ * reprend client, chantier, TVA et lignes, avec des montants en NÉGATIF pour
+ * se déduire automatiquement des totaux (dashboard, listes). Document brouillon.
+ */
+export async function createCreditNote(invoiceId: string) {
+  const { organizationId } = await requireOrganization();
+  const inv = await prisma.invoice.findFirst({
+    where: { id: invoiceId, organizationId },
+    include: { lines: { orderBy: { position: "asc" } } }
+  });
+  if (!inv) throw new Error("Facture introuvable");
+  if (inv.creditNoteOfId) throw new Error("Ce document est déjà une note de crédit");
+
+  const reference = await nextCreditNoteReference(organizationId);
+  const issued = new Intl.DateTimeFormat("fr-BE", { dateStyle: "long" }).format(inv.issueDate);
+
+  const created = await prisma.invoice.create({
+    data: {
+      organizationId, reference,
+      creditNoteOfId: inv.id,
+      customerId: inv.customerId,
+      projectId: inv.projectId,
+      title: `Note de crédit — ${inv.title}`,
+      vatRate: inv.vatRate,
+      totalHt: Number(inv.totalHt) * -1,
+      totalTvac: Number(inv.totalTvac) * -1,
+      issueDate: new Date(),
+      status: "DRAFT",
+      notes: `En annulation de la facture ${inv.reference} du ${issued}.`,
+      lines: {
+        create: inv.lines.map((l, i) => ({
+          position: i + 1,
+          description: l.description,
+          quantity: Number(l.quantity),
+          unit: l.unit,
+          unitPrice: Number(l.unitPrice) * -1,
+          totalHt: Number(l.totalHt) * -1
+        }))
+      }
+    }
+  });
+
+  revalidatePath("/factures");
+  revalidatePath(`/factures/${created.id}`);
+  revalidatePath(`/factures/${invoiceId}`);
+  return { ok: true, id: created.id };
 }
 
 export async function updateInvoice(id: string, formData: FormData) {

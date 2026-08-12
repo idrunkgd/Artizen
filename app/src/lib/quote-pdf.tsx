@@ -56,6 +56,8 @@ export interface QuotePdfData {
   status: string;
   billingType: string;
   hourlyRate: number | null;
+  /// Si présent (note de crédit), référence de la facture annulée.
+  creditNoteOf?: string | null;
   vatRate: number;
   totalHt: number;
   totalTvac: number;
@@ -73,8 +75,10 @@ export interface QuotePdfData {
 export function QuotePdf({ data, isInvoice = false }: { data: QuotePdfData; isInvoice?: boolean }) {
   const vatAmount = data.totalTvac - data.totalHt;
   const isRegie = data.billingType === "REGIE";
+  const isCredit = isInvoice && !!data.creditNoteOf;
+  const docLabel = isCredit ? "NOTE DE CRÉDIT" : isInvoice ? "FACTURE" : "DEVIS";
   return (
-    <Document title={`${isInvoice ? "Facture" : "Devis"} ${data.reference}`} author={data.org.name}>
+    <Document title={`${docLabel} ${data.reference}`} author={data.org.name}>
       <Page size="A4" style={s.page}>
         {/* Header */}
         <View style={s.header}>
@@ -88,7 +92,7 @@ export function QuotePdf({ data, isInvoice = false }: { data: QuotePdfData; isIn
             </View>
           </View>
           <View>
-            <Text style={s.docTitle}>{isInvoice ? "FACTURE" : "DEVIS"}</Text>
+            <Text style={s.docTitle}>{docLabel}</Text>
             <Text style={s.docRef}>{data.reference}</Text>
             <Text style={s.docRef}>{fmtDate(data.sentAt ?? new Date())}</Text>
           </View>
@@ -119,6 +123,11 @@ export function QuotePdf({ data, isInvoice = false }: { data: QuotePdfData; isIn
 
         {/* Titre + chantier */}
         <Text style={{ fontSize: 14, fontFamily: "Helvetica-Bold", marginBottom: 6 }}>{data.title}</Text>
+        {isCredit && (
+          <Text style={{ fontSize: 9, color: GREY, marginBottom: 8 }}>
+            En annulation de la facture {data.creditNoteOf}.
+          </Text>
+        )}
         {data.project && (
           <Text style={{ fontSize: 9, color: GREY, marginBottom: 8 }}>Chantier : {data.project.name} ({data.project.reference})</Text>
         )}

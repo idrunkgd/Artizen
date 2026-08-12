@@ -8,6 +8,7 @@ import { PdfPreviewButton } from "@/components/pdf-preview";
 import { InvoiceLines } from "./lines";
 import { InvoiceStatusActions } from "./status-actions";
 import { MinimalInvoiceEditor } from "./minimal-editor";
+import { CreditNoteButton } from "./credit-note-button";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +30,14 @@ export default async function Page({ params }: { params: { id: string } }) {
       // Tranches couvertes par cette facture (pour navigation devis ← tranche → facture)
       coveredMilestones: {
         include: { quote: { select: { id: true, title: true, reference: true } } }
-      }
+      },
+      creditNoteOf: { select: { id: true, reference: true } },
+      creditNotes: { select: { id: true, reference: true, status: true, totalTvac: true } }
     }
   });
   if (!invoice) notFound();
   const st = STATUS_MAP[invoice.status];
+  const isCreditNote = invoice.creditNoteOfId != null;
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <Link href="/factures" className="text-sm text-ink-300 inline-flex items-center gap-1 mb-3">
@@ -46,8 +50,31 @@ export default async function Page({ params }: { params: { id: string } }) {
             {invoice.reference} · émise {formatDate(invoice.issueDate)}
           </p>
         </div>
-        <span className={st.cls}>{st.label}</span>
+        <div className="flex flex-col items-end gap-1">
+          <span className={st.cls}>{st.label}</span>
+          {isCreditNote && <span className="badge-danger">Note de crédit</span>}
+        </div>
       </div>
+
+      {/* Lien note de crédit ↔ facture */}
+      {isCreditNote && invoice.creditNoteOf && (
+        <div className="card p-3 mb-4 bg-cream-200 text-sm">
+          Annule la facture{" "}
+          <Link href={`/factures/${invoice.creditNoteOf.id}`} className="font-semibold text-gold-700 underline">
+            {invoice.creditNoteOf.reference}
+          </Link>.
+        </div>
+      )}
+      {!isCreditNote && invoice.creditNotes.length > 0 && (
+        <div className="card p-3 mb-4 bg-cream-200 text-sm">
+          Note(s) de crédit liée(s) :{" "}
+          {invoice.creditNotes.map((c) => (
+            <Link key={c.id} href={`/factures/${c.id}`} className="font-semibold text-gold-700 underline mr-2">
+              {c.reference}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {/* Liens client + chantier */}
       <div className="flex flex-wrap gap-3 text-sm mb-4 text-ink-600">
@@ -62,8 +89,12 @@ export default async function Page({ params }: { params: { id: string } }) {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-5">
-        <PdfPreviewButton url={`/api/facture-pdf?id=${invoice.id}`} filename={`Facture-${invoice.reference}.pdf`} />
+        <PdfPreviewButton
+          url={`/api/facture-pdf?id=${invoice.id}`}
+          filename={`${isCreditNote ? "Note-credit" : "Facture"}-${invoice.reference}.pdf`}
+        />
         <InvoiceStatusActions invoiceId={invoice.id} currentStatus={invoice.status} />
+        {!isCreditNote && <CreditNoteButton invoiceId={invoice.id} />}
       </div>
 
       {/* Totaux */}

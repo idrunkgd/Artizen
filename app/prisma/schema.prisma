@@ -419,6 +419,13 @@ model Invoice {
   quoteId        String?
   quote          Quote?        @relation("InvoiceFromQuote", fields: [quoteId], references: [id], onDelete: SetNull)
 
+  /// Note de crédit : si renseigné, ce document est un avoir qui annule
+  /// (totalement) la facture référencée. Ses montants sont stockés en négatif
+  /// afin de se déduire automatiquement des totaux.
+  creditNoteOfId String?
+  creditNoteOf   Invoice?      @relation("CreditNotes", fields: [creditNoteOfId], references: [id], onDelete: SetNull)
+  creditNotes    Invoice[]     @relation("CreditNotes")
+
   title          String
   status         InvoiceStatus @default(DRAFT)
   vatRate        Decimal       @default(21) @db.Decimal(5, 2)
