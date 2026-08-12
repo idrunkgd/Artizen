@@ -22,6 +22,7 @@ export function TimesheetClient({ projects, entries }: { projects: Project[]; en
   const [range, setRange] = useState({ from: today, to: today, includeWeekend: false });
 
   function add() {
+    if (!form.projectId) { toast.error("Choisis un chantier"); return; }
     if (!form.hours || Number(form.hours) <= 0) { toast.error("Indique le nombre d'heures"); return; }
     const fd = new FormData();
     Object.entries(form).forEach(([k, v]) => fd.set(k, v));
@@ -35,6 +36,7 @@ export function TimesheetClient({ projects, entries }: { projects: Project[]; en
   }
 
   function addRange() {
+    if (!form.projectId) { toast.error("Choisis un chantier"); return; }
     if (!range.from || !range.to) { toast.error("Choisis les deux dates"); return; }
     if (!form.hours || Number(form.hours) <= 0) { toast.error("Indique le nombre d'heures"); return; }
     const fd = new FormData();
@@ -133,11 +135,14 @@ export function TimesheetClient({ projects, entries }: { projects: Project[]; en
             </>
           )}
           <div>
-            <label className="label">Chantier</label>
+            <label className="label">Chantier *</label>
             <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })} className="input">
-              <option value="">— Pas de chantier —</option>
+              <option value="">— Choisis un chantier —</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}
             </select>
+            {projects.length === 0 && (
+              <p className="text-xs text-amber-700 mt-1">Aucun chantier actif. Crée un chantier avant de saisir des heures.</p>
+            )}
           </div>
           <div>
             <label className="label">Description (optionnel)</label>
