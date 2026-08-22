@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     acceptedAt: inv.paidAt,
     notes: inv.dueDate ? `À régler avant le ${new Intl.DateTimeFormat("fr-BE", { dateStyle: "long" }).format(inv.dueDate)}.` : null,
     org: {
-      name: inv.organization.name, vatNumber: inv.organization.vatNumber,
+      name: inv.organization.name, tagline: inv.organization.tagline, vatNumber: inv.organization.vatNumber,
       street: inv.organization.street, postalCode: inv.organization.postalCode,
       city: inv.organization.city, country: inv.organization.country,
       phone: inv.organization.phone, email: inv.organization.email,

@@ -6,6 +6,7 @@ import { requireOrganization } from "@/lib/session";
 
 const OrgSchema = z.object({
   name: z.string().min(1).max(150),
+  tagline: z.string().optional().nullable().transform((v) => v?.trim() || null),
   vatNumber: z.string().optional().nullable().transform((v) => v?.trim() || null),
   street: z.string().optional().nullable().transform((v) => v?.trim() || null),
   postalCode: z.string().optional().nullable().transform((v) => v?.trim() || null),

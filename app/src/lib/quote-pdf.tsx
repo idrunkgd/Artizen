@@ -65,7 +65,7 @@ export interface QuotePdfData {
   sentAt: Date | null;
   acceptedAt: Date | null;
   notes: string | null;
-  org: { name: string; vatNumber: string | null; street: string | null; postalCode: string | null; city: string | null; country: string | null; phone: string | null; email: string | null; iban: string | null; logoUrl: string | null; paymentTermsDays: number };
+  org: { name: string; tagline: string | null; vatNumber: string | null; street: string | null; postalCode: string | null; city: string | null; country: string | null; phone: string | null; email: string | null; iban: string | null; logoUrl: string | null; paymentTermsDays: number };
   customer: { name: string; type: string; vatNumber: string | null; email: string | null; phone: string | null; street: string | null; postalCode: string | null; city: string | null };
   project: { name: string; reference: string } | null;
   lines: { description: string; quantity: number; unit: string; unitPrice: number; totalHt: number; category: string }[];
@@ -88,7 +88,7 @@ export function QuotePdf({ data, isInvoice = false }: { data: QuotePdfData; isIn
             ) : null}
             <View>
               <Text style={s.brand}>{data.org.name.toUpperCase()}</Text>
-              <Text style={s.brandTag}>Artisan du bâtiment</Text>
+              {data.org.tagline ? <Text style={s.brandTag}>{data.org.tagline}</Text> : null}
             </View>
           </View>
           <View>

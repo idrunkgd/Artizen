@@ -8,6 +8,7 @@ export function OrgForm({ initial }: { initial: any }) {
   const [pending, start] = useTransition();
   const [form, setForm] = useState({
     name: initial?.name ?? "",
+    tagline: initial?.tagline ?? "",
     vatNumber: initial?.vatNumber ?? "",
     street: initial?.street ?? "",
     postalCode: initial?.postalCode ?? "",
@@ -46,6 +47,12 @@ export function OrgForm({ initial }: { initial: any }) {
       <div>
         <label className="label">Nom de ta boîte *</label>
         <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" />
+      </div>
+      <div>
+        <label className="label">Sous-titre sur les documents</label>
+        <input value={form.tagline} placeholder="Ex. Artisan du bâtiment, Électricien, Maçonnerie…"
+               onChange={(e) => setForm({ ...form, tagline: e.target.value })} className="input" />
+        <p className="text-xs text-ink-300 mt-1">Affiché sous le nom de ta boîte sur les devis et factures. Laisse vide pour ne rien afficher.</p>
       </div>
       <div>
         <label className="label">N° TVA / BCE</label>

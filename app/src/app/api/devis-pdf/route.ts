@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
     notes: quote.notes,
     org: {
       name: quote.organization.name,
+      tagline: quote.organization.tagline,
       vatNumber: quote.organization.vatNumber,
       street: quote.organization.street,
       postalCode: quote.organization.postalCode,

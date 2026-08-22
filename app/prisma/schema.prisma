@@ -23,6 +23,8 @@ model Organization {
   id           String   @id @default(cuid())
   /// Nom commercial visible (ex. « Maçonnerie Dupont »)
   name         String
+  /// Sous-titre affiché sous le nom sur les documents PDF (ex. « Artisan du bâtiment »).
+  tagline      String?  @default("Artisan du bâtiment")
   /// N° TVA / BCE de l'artisan (Belgique : BE0xxx.xxx.xxx)
   vatNumber    String?
   /// Adresse / téléphone / email pour les devis et factures
