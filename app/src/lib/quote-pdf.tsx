@@ -209,8 +209,11 @@ export function QuotePdf({ data, isInvoice = false }: { data: QuotePdfData; isIn
         {/* Conditions */}
         <Text style={s.sectionTitle}>Conditions</Text>
         <Text style={{ fontSize: 8, color: GREY, lineHeight: 1.4 }}>
-          Devis valable {data.validityDays} jours à compter de la date d'émission.
-          Conditions de paiement : {data.org.paymentTermsDays} jours fin de mois.
+          {isCredit
+            ? `Note de crédit — montant porté à votre crédit.`
+            : isInvoice
+              ? `Facture payable à ${data.org.paymentTermsDays} jours date de facture.`
+              : `Devis valable ${data.validityDays} jours à compter de la date d'émission. Conditions de paiement : ${data.org.paymentTermsDays} jours date de facture.`}
           {data.org.iban && ` · Versement sur IBAN ${data.org.iban}.`}
           {data.notes && `\n\n${data.notes}`}
         </Text>

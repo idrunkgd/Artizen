@@ -185,6 +185,7 @@ export async function createInvoiceFromTimesheet(
       organizationId,
       projectId: quote.projectId,
       invoiceId: null,
+      hours: { gt: 0 }, // exclut les pointages en cours (non terminés)
       ...(from || to ? { date: dateFilter } : {})
     },
     orderBy: { date: "asc" }

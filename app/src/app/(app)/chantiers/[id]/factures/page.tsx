@@ -36,7 +36,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   let regieEntries: { date: string; hours: number }[] = [];
   if (regieQuote) {
     const rows = await prisma.timesheetEntry.findMany({
-      where: { organizationId, projectId: project.id, invoiceId: null },
+      where: { organizationId, projectId: project.id, invoiceId: null, hours: { gt: 0 } },
       orderBy: { date: "asc" },
       select: { date: true, hours: true }
     });

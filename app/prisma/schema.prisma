@@ -471,6 +471,10 @@ model TimesheetEntry {
   project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
   date           DateTime     @db.Date
   hours          Decimal      @db.Decimal(4, 2)  // ex. 7.5
+  /// Horaires optionnels (saisie début/fin ou pointage chrono). Instants UTC.
+  /// Si endAt est null alors que startAt est renseigné => pointage EN COURS.
+  startAt        DateTime?
+  endAt          DateTime?
   description    String?      // « pose carrelage », « démolition cloison »
   /// Facture régie ayant couvert ces heures (null = pas encore facturé).
   /// Empêche de facturer deux fois les mêmes heures.

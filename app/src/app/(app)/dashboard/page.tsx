@@ -3,6 +3,7 @@ import { requireOrganization } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { Hammer, FileText, Receipt, Plus } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { PointageTiles } from "./pointage-tiles";
 
 export const dynamic = "force-dynamic";
 
@@ -27,12 +28,38 @@ export default async function Dashboard() {
     include: { customer: true }
   });
 
+  // Pointage : chantiers actifs + éventuel pointage en cours de l'utilisateur
+  const [tileProjects, runningEntry] = await Promise.all([
+    prisma.project.findMany({
+      where: { organizationId, status: { in: ["ACTIVE", "PROSPECT", "ON_HOLD"] } },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, customer: { select: { name: true } } }
+    }),
+    prisma.timesheetEntry.findFirst({
+      where: { organizationId, userId: session.user.id as string, startAt: { not: null }, endAt: null },
+      orderBy: { startAt: "desc" },
+      select: { projectId: true, startAt: true }
+    })
+  ]);
+
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
       <header>
         <h1 className="text-2xl md:text-3xl font-bold text-ink">Salut {firstName} 👋</h1>
         <p className="text-ink-300 mt-1">Voici ton activité aujourd'hui.</p>
       </header>
+
+      {/* Pointage : dalles chantiers, clic = démarre/arrête le temps de prestation */}
+      {tileProjects.length > 0 && (
+        <section>
+          <h2 className="font-bold text-lg mb-3">Pointage — clique sur un chantier</h2>
+          <PointageTiles
+            projects={tileProjects.map((p) => ({ id: p.id, name: p.name, customer: p.customer?.name ?? null }))}
+            runningProjectId={runningEntry?.projectId ?? null}
+            startAt={runningEntry?.startAt ? new Date(runningEntry.startAt).toISOString() : null}
+          />
+        </section>
+      )}
 
       {/* KPI cards — grosses, lisibles */}
       <div className="grid grid-cols-2 gap-3">
