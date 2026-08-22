@@ -18,11 +18,12 @@ function hoursBetween(start: Date, end: Date): number {
   return Math.round(((end.getTime() - start.getTime()) / 3600000) * 100) / 100;
 }
 
-// Clôture d'un pointage chrono : on ne valide que par tranches de 15 min,
-// arrondi À L'INFÉRIEUR. Moins de 15 min => non compté (la saisie est supprimée).
+// Clôture d'un pointage chrono : arrondi au quart d'heure LE PLUS PROCHE
+// (seuil 7,5 min : on valide le quart dès 7,5 min prestées, sinon on descend).
+// Ex : 24 min -> 30, 42 min -> 45, 7 min -> 0.
 async function settleRunning(id: string, startAt: Date, now: Date) {
   const raw = Math.max(0, hoursBetween(startAt, now));
-  const quarters = Math.floor(raw / 0.25) * 0.25;
+  const quarters = Math.round(raw / 0.25) * 0.25;
   if (quarters < 0.25) {
     await prisma.timesheetEntry.delete({ where: { id } });
   } else {
