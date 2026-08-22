@@ -18,6 +18,18 @@ function hoursBetween(start: Date, end: Date): number {
   return Math.round(((end.getTime() - start.getTime()) / 3600000) * 100) / 100;
 }
 
+// Clôture d'un pointage chrono : on ne valide que par tranches de 15 min,
+// arrondi À L'INFÉRIEUR. Moins de 15 min => non compté (la saisie est supprimée).
+async function settleRunning(id: string, startAt: Date, now: Date) {
+  const raw = Math.max(0, hoursBetween(startAt, now));
+  const quarters = Math.floor(raw / 0.25) * 0.25;
+  if (quarters < 0.25) {
+    await prisma.timesheetEntry.delete({ where: { id } });
+  } else {
+    await prisma.timesheetEntry.update({ where: { id }, data: { endAt: now, hours: quarters } });
+  }
+}
+
 export async function addTimesheetEntry(formData: FormData) {
   const { session, organizationId } = await requireOrganization();
   const data = EntrySchema.parse(Object.fromEntries(formData));
@@ -122,10 +134,7 @@ export async function toggleTimer(projectId: string) {
   const now = new Date();
 
   if (running) {
-    await prisma.timesheetEntry.update({
-      where: { id: running.id },
-      data: { endAt: now, hours: Math.max(0, hoursBetween(running.startAt as Date, now)) }
-    });
+    await settleRunning(running.id, running.startAt as Date, now);
     if (running.projectId === projectId) {
       revalidatePath("/dashboard"); revalidatePath("/timesheet");
       return { ok: true, running: false };
@@ -152,10 +161,7 @@ export async function stopRunningTimer() {
   });
   if (!running) return { ok: true, running: false };
   const now = new Date();
-  await prisma.timesheetEntry.update({
-    where: { id: running.id },
-    data: { endAt: now, hours: Math.max(0, hoursBetween(running.startAt as Date, now)) }
-  });
+  await settleRunning(running.id, running.startAt as Date, now);
   revalidatePath("/dashboard"); revalidatePath("/timesheet");
   return { ok: true, running: false };
 }
